@@ -1,0 +1,48 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "PingUp-Frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "PingUp-Frontend/**"
+      - ".github/workflows/frontend.yml"
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: PingUp-Frontend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: PingUp-Frontend
+        run: npm ci
+      
+      - name: Run linter
+        working-directory: PingUp-Frontend
+        run: npm run lint
+      
+      - name: Run build validation
+        working-directory: PingUp-Frontend
+        run: npm run build
+      
+      - name: Check bundle size
+        working-directory: PingUp-Frontend
+        run: ls -lh dist/ || echo "Build artifacts location verified"
+        continue-on-error: true

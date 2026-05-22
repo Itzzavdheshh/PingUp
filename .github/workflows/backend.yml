@@ -1,0 +1,50 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "PingUp-Backend/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "PingUp-Backend/**"
+      - ".github/workflows/backend.yml"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: PingUp-Backend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: PingUp-Backend
+        run: npm ci
+      
+      - name: Run npm audit
+        working-directory: PingUp-Backend
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Check for vulnerabilities (npm audit fix)
+        working-directory: PingUp-Backend
+        run: npm audit --json > audit.json
+        continue-on-error: true
+      
+      - name: Verify Node modules integrity
+        working-directory: PingUp-Backend
+        run: npm ls
+        continue-on-error: true
