@@ -34,7 +34,9 @@ export default function Login({ onLogin, onSwitch }) {
 
           <form onSubmit={handleSubmit}>
             <div className="auth-field">
-              <label>Email or Username <span className="auth-req">*</span></label>
+              <label>
+                <span>Email or Username <span className="auth-req">*</span></span>
+              </label>
               <input
                 type="text"
                 value={email}
@@ -46,7 +48,7 @@ export default function Login({ onLogin, onSwitch }) {
 
             <div className="auth-field">
               <label>
-                Password <span className="auth-req">*</span>
+                <span>Password <span className="auth-req">*</span></span>
                 <span className="auth-forgot" onClick={() => { }}>Forgot your password?</span>
               </label>
               <input
