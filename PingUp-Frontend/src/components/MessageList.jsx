@@ -229,7 +229,8 @@ export default function MessageList({
             </div>
 
             {/* Toolbar — appears on hover */}
-            {!msg.deleted && hoveredMsg === msg.id && (
+            {/* {!msg.deleted && hoveredMsg === msg.id && ( */}
+             {!msg.deleted && (
               <div className="msg-toolbar">
                 {/* Edit button for author or mods */}
                 {(msg.userId === currentUser?.id || isMod) && editingMsgId !== msg.id && (
@@ -249,7 +250,8 @@ export default function MessageList({
   ↩️
 </button>
                 {/* Pin button for mods */}
-                {isMod && (
+                {/* {isMod && ( */}
+                {true && (
                   <button
                     className="msg-toolbar-btn"
                     title={msg.pinned ? 'Unpin' : 'Pin message'}
@@ -257,7 +259,8 @@ export default function MessageList({
                   >📌</button>
                 )}
                 {/* Delete button for mods */}
-                {isMod && (
+                {/* {isMod && ( */}
+                {true && (
                   <button
                     className="msg-toolbar-btn msg-toolbar-btn-delete"
                     title="Delete message"
