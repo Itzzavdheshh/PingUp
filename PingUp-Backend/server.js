@@ -648,7 +648,7 @@ io.on('connection', async (socket) => {
     const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
     const categoryMap = new Map();
     for (const r of rooms) {
-        if (r.isPrivate && dbUser.role === ROLES.MEMBER) continue;
+        if (r.isPrivate && socket.user.role === ROLES.MEMBER) continue;
         const catKey = r.category || 'general';
         if (!categoryMap.has(catKey))
             categoryMap.set(catKey, { id: `cat-${catKey}`, name: catKey, channels: [] });
@@ -661,7 +661,7 @@ io.on('connection', async (socket) => {
     socket.on('room:join', safeSocketHandler(socket, 'room:join', async ({ roomName }) => {
         const room = await Room.findOne({ name: roomName });
         if (!room) return socket.emit('error:general', 'Channel not found.');
-        if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
@@ -699,7 +699,7 @@ io.on('connection', async (socket) => {
     socket.on('channel:join', safeSocketHandler(socket, 'channel:join', async ({ channelId }) => {
         const room = await Room.findById(channelId);
         if (!room) return socket.emit('error:general', 'Channel not found.');
-        if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
