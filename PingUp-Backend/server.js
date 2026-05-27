@@ -238,9 +238,9 @@ app.put('/api/profile', async (req, res) => {
     try {
         const decoded = authHeader(req, res);
         if (!decoded) return;
-        const { displayName, email, phone } = req.body;
+        const {username, displayName, email, phone } = req.body;
         const user = await User.findByIdAndUpdate(
-            decoded.id, { displayName, email, phone }, { new: true }
+            decoded.id, {username, displayName, email, phone }, { new: true }
         );
         res.json({ user: user.toSafeObject() });
     } catch (err) {

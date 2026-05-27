@@ -8,6 +8,8 @@ const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const YEARS = Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i);
 
 export default function Register({ onLogin, onSwitch }) {
+  const API_URL = import.meta.env.VITE_API_URL;
+  console.log(API_URL);
   const [form, setForm] = useState({
     email: '',
     displayName: '',
@@ -40,7 +42,7 @@ export default function Register({ onLogin, onSwitch }) {
     }
     setLoading(true);
     try {
-      const res = await fetch('https://pingup-backend-1.onrender.com/api/register', {
+      const res = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

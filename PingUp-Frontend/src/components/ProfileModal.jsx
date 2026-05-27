@@ -1,14 +1,15 @@
 import { useState } from 'react';
 
-export default function ProfileModal({ user, onClose }) {
+export default function ProfileModal({ user, onClose, setCurrentUser }) {
   if (!user) return null;
 
+  const API_URL = import.meta.env.VITE_API_URL;
   const [tab, setTab] = useState('security');
   const [editing, setEditing] = useState(null); // 'displayName' | 'username' | 'email' | 'phone'
   const [fields, setFields] = useState({
-    displayName: user.username,
+    displayName: user.displayName,
     username:    user.username,
-    email:       'user@gmail.com',
+    email:       user.email,
     phone:       '1234565862',
   });
   const [tempVal, setTempVal] = useState('');
@@ -25,11 +26,35 @@ export default function ProfileModal({ user, onClose }) {
     setEditing(field);
   }
 
-  function saveEdit() {
+  async function saveEdit(){
     if (tempVal.trim()) {
-      setFields(f => ({ ...f, [editing]: tempVal.trim() }));
+      const updatedFields = {
+        ...fields,
+        [editing]: tempVal.trim()
+      };
+      try{
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/api/profile`, { method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updatedFields),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          console.error(data.error);
+          return;
+        }
+        setFields(updatedFields);  
+        setCurrentUser(data.user);
+        localStorage.setItem('user',JSON.stringify(data.user));
+    } catch (err) {
+      console.error(err);
+    }finally{
+      setEditing(null);
     }
-    setEditing(null);
+   }
   }
 
   function maskEmail(email) {
