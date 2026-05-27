@@ -629,8 +629,9 @@ async function processCommand(socket, roomName, text) {
 io.use(socketAuthMiddleware);
 
 io.on('connection', async (socket) => {
+    let dbUser = null;
     try{
-        const dbUser = await User.findById(socket.user.id);
+        dbUser = await User.findById(socket.user.id);
         if (!dbUser) return socket.disconnect();
         if (dbUser.banned) {
             socket.emit('kicked', { by: 'server (banned)' });
