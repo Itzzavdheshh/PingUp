@@ -4055,6 +4055,16 @@ body {
 /* Fields */
 .auth-field {
   margin-bottom: 20px;
+  position: relative;
+}
+.auth-eye {
+  position: absolute;
+  right: 12px;
+  top: 70%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 .auth-field label {
@@ -6185,6 +6195,7 @@ body {
 /* Fields */
 .reg-field {
   margin-bottom: 16px;
+  position: relative;
 }
 
 .reg-field label {

@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function Login({ onLogin, onSwitch }) {
   const [email, setEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,7 +45,7 @@ export default function Login({ onLogin, onSwitch }) {
                 onChange={e => setEmail(e.target.value)}
                 autoFocus
                 required
-              />
+              />              
             </div>
 
             <div className="auth-field">
@@ -52,11 +54,20 @@ export default function Login({ onLogin, onSwitch }) {
                 <span className="auth-forgot" onClick={() => { }}>Forgot your password?</span>
               </label>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="auth-eye"
+                style={{cursor : 'pointer'}}
+              >
+                {showPassword ? ( <FiEyeOff size={14} style={{ color: "var(--text-secondary)" }} />) : (
+                  <FiEye size={14} style={{ color: "var(--text-secondary)" }} />)}
+              </button>
             </div>
 
             <button className="auth-btn" type="submit" disabled={loading}>
