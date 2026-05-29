@@ -898,6 +898,10 @@ io.on('connection', async (socket) => {
         if (!room) return;
         const msg = await Message.findById(messageId);
         if (!msg) return;
+        
+        // Prevent IDOR: Verify message belongs to the target room
+        if (msg.roomName !== room.name) 
+            return socket.emit('error:permission', 'Message does not belong to this room.');
         const alreadyPinned = room.pinnedMessages.some(id => id.toString() === messageId);
         if (alreadyPinned) {
             room.pinnedMessages = room.pinnedMessages.filter(id => id.toString() !== messageId);
@@ -920,6 +924,15 @@ io.on('connection', async (socket) => {
     socket.on('message:delete', safeSocketHandler(socket, 'message:delete', async ({ channelId, roomName: rName, messageId }) => {
         if (!['owner', 'moderator'].includes(socket.user.role))
             return socket.emit('error:permission', 'Moderators only.');
+            
+        // Look up message first to verify room ownership
+        const targetMsg = await Message.findById(messageId);
+        if (!targetMsg) return;
+        
+        const resolvedRoomName = channelId ? (await Room.findById(channelId))?.name : rName;
+        if (targetMsg.roomName !== resolvedRoomName)
+            return socket.emit('error:permission', 'Message does not belong to this room.');
+
         const msg = await Message.findByIdAndUpdate(
             messageId, { deleted: true, text: '[message deleted]' }, { new: true }
         );
@@ -983,6 +996,16 @@ io.on('connection', async (socket) => {
     async ({ parentMessageId }) => {
 
       if (!parentMessageId) return;
+
+      const parentMsg = await Message.findById(parentMessageId);
+      if (!parentMsg) return socket.emit('error:general', 'Parent message not found.');
+
+      // Prevent IDOR: Check room access
+      const room = await Room.findOne({ name: parentMsg.roomName });
+      if (room && room.isPrivate && socket.user.role === ROLES.MEMBER) {
+          const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
+          if (!allowed) return socket.emit('error:permission', 'Forbidden: This thread is in a private channel.');
+      }
 
       const replies = await Message.find({
         parentMessageId,
