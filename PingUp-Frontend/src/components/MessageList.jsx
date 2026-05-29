@@ -231,7 +231,11 @@ export default function MessageList({
       src={msg.imageUrl}
       alt="shared image"
       style={{ display: 'block', maxWidth: '300px', maxHeight: '300px', marginTop: '8px', borderRadius: '8px', cursor: 'pointer' }}
-      onClick={() => window.open(msg.imageUrl, '_blank')}
+      onClick={() => {
+      if (typeof msg.imageUrl !== 'string') return;
+      if (!msg.imageUrl.startsWith('/uploads/')) return;
+      window.open(msg.imageUrl, '_blank', 'noopener,noreferrer');
+    }}
     />
   )}
 </div>

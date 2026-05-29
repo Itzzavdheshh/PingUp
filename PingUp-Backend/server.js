@@ -60,7 +60,7 @@ app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
 
 // Image upload route
-app.post('/api/upload', upload.single('image'), (req, res) => {
+app.post('/api/upload', verifyToken, upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const imageUrl = `/uploads/${req.file.filename}`;
   res.json({ imageUrl });
@@ -762,7 +762,7 @@ io.on('connection', async (socket) => {
             'message:send',
             async ({ roomName, channelId, text, parentMessageId, imageUrl }) => {
                 const trimmed = text?.trim();
-                if (!trimmed) return;
+               if (!trimmed && !imageUrl) return;
 
                 let resolvedRoom = roomName;
                 let room = null;
@@ -804,9 +804,9 @@ io.on('connection', async (socket) => {
                 const payload = {
                     id: msgId.toString(), userId: socket.user.id,
                     username: socket.user.username, role: freshUser.role,
-                    text: trimmed, timestamp: msg.createdAt, deleted: false, pinned: false,
-                    parentMessageId: msg.parentMessageId,
-                    replyCount: msg.replyCount, imageUrl: msg.imageUrl || null,
+                    text: trimmed, timestamp: new Date(), deleted: false, pinned: false,
+parentMessageId: parentMessageId || null,
+replyCount: 0, imageUrl: imageUrl || null,
                 };
 
                 io.to(resolvedRoom).emit('message:new', payload);

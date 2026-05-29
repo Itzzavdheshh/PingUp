@@ -32,6 +32,9 @@ export default function MessageInput({
       try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await res.json();
+      if (!res.ok || !data?.imageUrl) {
+          throw new Error('Upload failed');
+        }
         imageUrl = data.imageUrl;
       } catch (err) {
         alert('Image upload failed');
@@ -55,10 +58,10 @@ export default function MessageInput({
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if ((!text.trim() && !imageFile) || isDisabled) return;
+     if (uploading || (!text.trim() && !imageFile) || isDisabled) return;
       handleSend();
     }
-  }, [text, isDisabled, imageFile]);
+  }, [text, isDisabled, imageFile, uploading]);
 
   const handleChange = useCallback((e) => {
     setText(e.target.value);
@@ -74,17 +77,18 @@ export default function MessageInput({
   }, [onTypingStart, onTypingStop]);
 
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
-  };
+  const file = e.target.files[0];
+  if (!file) return;
+  if (imagePreview) URL.revokeObjectURL(imagePreview);
+  setImageFile(file);
+  setImagePreview(URL.createObjectURL(file));
+};
 
   const removeImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  if (imagePreview) URL.revokeObjectURL(imagePreview);
+  setImageFile(null);
+  setImagePreview(null);
+  if (fileInputRef.current) fileInputRef.current.value = '';
 
   return (
     <div className={`msg-input-wrap ${isDisabled ? 'msg-input-disabled' : ''}`}>
@@ -129,4 +133,5 @@ export default function MessageInput({
       </button>
     </div>
   );
+}
 }
