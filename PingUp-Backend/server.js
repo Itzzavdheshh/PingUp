@@ -891,7 +891,7 @@ io.on('connection', async (socket) => {
                     return socket.emit('error:permission', 'You cannot send messages.');
 
                 const msgId = new mongoose.Types.ObjectId();
-                
+
                 await messageQueue.add('send-message', {
                     _id: msgId,
                     roomName: resolvedRoom,
@@ -1188,7 +1188,6 @@ replyCount: 0, imageUrl: imageUrl || null,
                 })
                     .sort({ createdAt: 1 })
                     .lean();
-
                 socket.emit('thread:history', {
                     parentMessageId,
                     replies: replies.map((m) => ({
@@ -1207,7 +1206,6 @@ replyCount: 0, imageUrl: imageUrl || null,
             }
         )
     );
-
     // ── Emoji Reactions ───────────────────────────────────────────
     socket.on(
         'message:reaction',
@@ -1389,43 +1387,53 @@ replyCount: 0, imageUrl: imageUrl || null,
         if (otherSocket) otherSocket.emit('dm:read', { conversationId: convId });
     }, 'Failed to open direct message.'));
 
-    socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text }) => {
-        const trimmed = text?.trim();
-        if (!trimmed) return;
-        const toUser = await User.findById(toUserId);
-        if (!toUser) return socket.emit('error:general', 'User not found.');
-        const convId = [socket.user.id, toUserId].sort().join('_');
-        const freshUser = await User.findById(socket.user.id);
-        const msg = await DirectMessage.create({
-            conversationId: convId,
-            participants: [socket.user.id, toUserId],
-            senderId: socket.user.id,
-            senderUsername: socket.user.username,
-            senderRole: freshUser.role,
-            text: trimmed,
-            read: false,
-        });
-        const payload = {
-            id: msg._id.toString(),
-            conversationId: convId,
-            senderId: socket.user.id,
-            senderUsername: socket.user.username,
-            senderRole: freshUser.role,
-            text: trimmed,
-            timestamp: msg.createdAt,
-            read: false,
-        };
-        io.to(`dm:${convId}`).emit('dm:message', payload);
-        const rs = [...io.sockets.sockets.values()].find(s => s.user?.id === toUserId);
-        if (rs && rs.currentDM !== convId) {
-            rs.emit('dm:notification', {
-                from: socket.user.username,
-                fromId: socket.user.id,
+    socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text, clientId }, callback) => {
+        try {
+            if (clientId) {
+                const existingMsg = await DirectMessage.findOne({ clientId });
+
+                if (existingMsg) {
+                    if (typeof callback == 'function') {
+                        return callback({ status: 'success', id: existingMsg._id.toString() });
+                    }
+                    return;
+                }
+            }
+
+            const convId = [toUserId, socket.user.id].sort().join('_');
+
+            const msg = await DirectMessage.create({
                 conversationId: convId,
-                preview: trimmed.slice(0, 60),
-            });
+                participants: [socket.user.id, toUserId],
+                senderId: socket.user.id,
+                senderUsername: socket.user.username,
+                senderRole: socket.user.role,
+                text,
+                clientId
+            })
+
+            const payload = {
+                id: msg._id.toString(),
+                senderId: socket.user.id,
+                senderUsername: socket.user.username,
+                senderRole: socket.user.role,
+                text,
+                timestamp: msg.createdAt,
+                read: false,
+                clientId
+            }
+
+            io.to(convId).emit('dm:message', payload);
+
+            if (typeof callback === 'function') {
+                callback({ status: 'success', id: msg._id.toString() });
+            }
+        } catch (err) {
+            if (typeof callback === 'function') {
+                callback({ error: 'Server error', status: 'failed' });
+            }
         }
-    }, 'Direct message failed to send.'));
+    }));
 
     socket.on('dm:typing:start', ({ toUserId }) => {
         const convId = [socket.user.id, toUserId].sort().join('_');
