@@ -7,7 +7,7 @@ export default function MessageInput({
   const [text, setText]       = useState('');
   const typingRef             = useRef(false);
   const typingTimer           = useRef(null);
-  const inputRef = useRef(null);
+  const inputRef              = useRef(null);
 
   const isOwner    = currentUser?.role === 'owner';
   const isLocked   = roomSettings?.isLocked;
@@ -19,25 +19,32 @@ export default function MessageInput({
     if (isReadOnly) return '🔇 This channel is read-only';
     return `Message #${roomName}`;
   };
+
+  // Only focus if not disabled and not already focused (improves accessibility)
   useEffect(() => {
-  if (!isDisabled) {
-    inputRef.current?.focus();
-  }
-}, [roomName, isDisabled]);
+    if (!isDisabled && document.activeElement !== inputRef.current) {
+      inputRef.current?.focus();
+    }
+  }, [roomName, isDisabled]);
+
+  // Helper to clear input, maintain focus, and stop typing indicator
+  const clearTypingAndRefocus = useCallback(() => {
+    setText('');
+    setTimeout(() => inputRef.current?.focus(), 0);
+    if (typingRef.current) {
+      onTypingStop();
+      typingRef.current = false;
+    }
+  }, [onTypingStop]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!text.trim() || isDisabled) return;
       onSend(text.trim());
-setText('');
-setTimeout(() => inputRef.current?.focus(), 0);
-      if (typingRef.current) {
-        onTypingStop();
-        typingRef.current = false;
-      }
+      clearTypingAndRefocus();
     }
-  }, [text, isDisabled, onSend, onTypingStop]);
+  }, [text, isDisabled, onSend, clearTypingAndRefocus]);
 
   const handleChange = useCallback((e) => {
     setText(e.target.value);
@@ -54,9 +61,9 @@ setTimeout(() => inputRef.current?.focus(), 0);
 
   return (
     <div className={`msg-input-wrap ${isDisabled ? 'msg-input-disabled' : ''}`}>
-<textarea
-  ref={inputRef}
-  className="msg-input"
+      <textarea
+        ref={inputRef}
+        className="msg-input"
         placeholder={getPlaceholder()}
         value={text}
         onChange={handleChange}
@@ -70,8 +77,7 @@ setTimeout(() => inputRef.current?.focus(), 0);
         onClick={() => {
           if (!text.trim() || isDisabled) return;
           onSend(text.trim());
-setText('');
-setTimeout(() => inputRef.current?.focus(), 0);
+          clearTypingAndRefocus();
         }}
       >➤</button>
     </div>
