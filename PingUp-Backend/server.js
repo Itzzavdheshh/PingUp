@@ -196,8 +196,21 @@ app.get('/api/structure', async (req, res) => {
 
 // ─── Get Rooms (legacy) ───────────────────────────────────────────
 app.get('/api/rooms', async (req, res) => {
+  const decoded = authHeader(req, res);
+  if (!decoded) return;
+
+  const me = await User.findById(decoded.id);
+
   const rooms = await Room.find().sort({ createdAt: 1 });
-  res.json(rooms.map(r => roomToChannel(r)));
+
+  const filteredRooms = rooms.filter(room => {
+    if (room.isPrivate && !hasPermission(me.role, ROLES.MODERATOR)) {
+      return false;
+    }
+    return true;
+  });
+
+  res.json(filteredRooms.map(r => roomToChannel(r)));
 });
 
 // ─── Get Users ────────────────────────────────────────────────────
