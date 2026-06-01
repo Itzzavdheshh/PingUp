@@ -7,12 +7,13 @@ export default function Login({ onLogin, onSwitch }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const API_URL = import.meta.env.VITE_API_URL;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch('https://pingup-backend-1.onrender.com/api/login', {
+      const res = await fetch(`${API_URL}/api/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: email.trim(), password }),
       });
