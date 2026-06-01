@@ -1,24 +1,42 @@
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../api';
 
-export default function AdminPanel({ currentUser, socket, categories, onlineUsers, token, onClose }) {
+export default function AdminPanel({ currentUser, socket, categories, token, onClose }) {
   const [tab,         setTab]         = useState('channels'); // 'channels' | 'users' | 'roles'
   const [allUsers,    setAllUsers]    = useState([]);
   const [loadingUsers,setLoadingUsers]= useState(false);
   const [notification,setNotification]= useState('');
 
-  const isOwner = currentUser?.role === 'owner';
 
   // Fetch all users for user management
   useEffect(() => {
     if (tab !== 'users' && tab !== 'roles') return;
-    setLoadingUsers(true);
+    
+    let isMounted = true;
+    const timer = setTimeout(() => {
+      if (isMounted) setLoadingUsers(true);
+    }, 0);
+
     fetch(getApiUrl('/api/users'), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
-      .then(data => { setAllUsers(data); setLoadingUsers(false); })
-      .catch(() => setLoadingUsers(false));
+      .then(data => {
+        if (isMounted) {
+          setAllUsers(data);
+          setLoadingUsers(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setLoadingUsers(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [tab, token]);
 
   function notify(msg) {
@@ -69,7 +87,6 @@ export default function AdminPanel({ currentUser, socket, categories, onlineUser
     notify(`Banned ${username}`);
   }
 
-  const allChannels = (categories || []).flatMap(c => c.channels);
 
   return (
     <div className="admin-overlay" onClick={e => e.target === e.currentTarget && onClose()}>

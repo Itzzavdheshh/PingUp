@@ -9,18 +9,21 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
   const bottomRef                     = useRef(null);
   const typingTimeout                 = useRef(null);
 
+  const otherUserId = otherUser?.id;
+  const currentUsername = currentUser?.username;
+
   // Load history + join DM room
   useEffect(() => {
-    if (!otherUser || !token) return;
+    if (!otherUserId || !token) return;
 
-    fetch(getApiUrl(`/api/dm/${otherUser.id}`), {
+    fetch(getApiUrl(`/api/dm/${otherUserId}`), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(data => setMessages(Array.isArray(data) ? data : []))
       .catch(() => {});
 
-    socket.emit('dm:join', { otherUserId: otherUser.id });
+    socket.emit('dm:join', { otherUserId });
 
     const onMessage = (msg) => {
       setMessages(prev => {
@@ -29,7 +32,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       });
     };
     const onTyping = ({ username, typing }) => {
-      if (username !== currentUser.username) setIsTyping(typing);
+      if (username !== currentUsername) setIsTyping(typing);
     };
     const onRead = () => {
       setMessages(prev => prev.map(m => ({ ...m, read: true })));
@@ -44,7 +47,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       socket.off('dm:typing',  onTyping);
       socket.off('dm:read',    onRead);
     };
-  }, [otherUser?.id]);
+  }, [otherUserId, token, socket, currentUsername]);
 
   // Auto scroll
   useEffect(() => {

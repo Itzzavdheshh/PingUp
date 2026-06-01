@@ -44,6 +44,7 @@ const [threadReplies, setThreadReplies] = useState([]);
   const [dmNotifs,      setDmNotifs]      = useState([]);
   const [dmToast,       setDmToast]       = useState(null);
 
+  const [socketInstance, setSocketInstance] = useState(null);
   const socketRef = useRef(null);
 
   const isVoiceChannel = activeChannel && VOICE_CHANNELS.includes(activeChannel.name);
@@ -71,6 +72,10 @@ const [threadReplies, setThreadReplies] = useState([]);
     const socket = getSocket(token);
     socketRef.current = socket;
     socket.connect();
+
+    const timer = setTimeout(() => {
+      setSocketInstance(socket);
+    }, 0);
 
     socket.on('users:update', setOnlineUsers);
     socket.on('structure:update', setCategories);
@@ -206,8 +211,13 @@ const [threadReplies, setThreadReplies] = useState([]);
     );
     socket.on('error:general', msg => console.error('[socket]', msg));
 
-    return () => socket.removeAllListeners();
-  }, [token, currentUser?.id]);
+    return () => {
+      clearTimeout(timer);
+      socket.removeAllListeners();
+      setSocketInstance(null);
+      socketRef.current = null;
+    };
+  }, [token, currentUser, handleLogout]);
 
   // ── Auth ───────────────────────────────────────────────────────
   const handleLogin = (user, tok) => {
@@ -296,7 +306,7 @@ const [threadReplies, setThreadReplies] = useState([]);
         <div className="chat-admin-embed">
           <AdminPanel
             currentUser={currentUser}
-            socket={socketRef.current}
+            socket={socketInstance}
             categories={categories}
             onlineUsers={onlineUsers}
             token={token}
@@ -317,7 +327,7 @@ const [threadReplies, setThreadReplies] = useState([]);
             online: !!onlineUsers.find(u => u.id === activeDM.id),
           }}
           token={token}
-          socket={socketRef.current}
+          socket={socketInstance}
           onClose={() => setActiveDM(null)}
         />
       );
@@ -334,7 +344,7 @@ const [threadReplies, setThreadReplies] = useState([]);
         <VoiceChannel
           channel={activeChannel}
           currentUser={currentUser}
-          socket={socketRef.current}
+          socket={socketInstance}
           onlineUsers={onlineUsers}
           onLeave={() => setActiveChannel(null)}
         />
@@ -403,13 +413,13 @@ const [threadReplies, setThreadReplies] = useState([]);
             commandResponses={commandResps}
             typingUsers={typingUsers}
             currentUser={currentUser}
-            socket={socketRef.current}
+            socket={socketInstance}
             channelId={activeChannel.id}
             roomName={activeChannel.name}
             roomSettings={roomSettings}
             selectedThread={selectedThread}
-threadReplies={threadReplies}
-onOpenThread={handleOpenThread}
+            threadReplies={threadReplies}
+            onOpenThread={handleOpenThread}
           />
           <MessageInput
             onSend={handleSend}
@@ -453,7 +463,7 @@ onOpenThread={handleOpenThread}
         onlineUsers={onlineUsers}
         activeChannel={activeChannel}
         categories={categories}
-        socket={socketRef.current}
+        socket={socketInstance}
         onChannelSelect={handleChannelSelect}
         onLogout={handleLogout}
         onOpenProfile={() => setShowProfile(true)}
@@ -494,7 +504,7 @@ onOpenThread={handleOpenThread}
           currentUser={currentUser}
           onlineUsers={onlineUsers}
           token={token}
-          socket={socketRef.current}
+          socket={socketInstance}
           onUserClick={(user) => {
             if (user.id === currentUser.id) return;
             openDM(user);

@@ -23,7 +23,7 @@ export default function DMList({ currentUser, token, onlineUsers, onOpenDM, acti
       .then(r => r.json())
       .then(data => setConversations(Array.isArray(data) ? data : []))
       .catch(() => {});
-  }, [dmNotifications]);
+  }, [dmNotifications, token]);
 
   // Find a user to start a new DM with (all online users except self)
   const others = onlineUsers.filter(u => u.id !== currentUser.id);

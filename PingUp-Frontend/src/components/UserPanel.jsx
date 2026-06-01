@@ -27,7 +27,6 @@ export default function UserPanel({
   const [showSearch,   setShowSearch]   = useState(false);
 
   const isOwner = currentUser?.role === 'owner';
-  const isMod   = ['owner', 'moderator'].includes(currentUser?.role);
 
   // ── Fetch ALL registered users once ───────────────────────────
   useEffect(() => {
