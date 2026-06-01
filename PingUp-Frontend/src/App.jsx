@@ -508,6 +508,7 @@ onOpenThread={handleOpenThread}
           user={currentUser}
           onClose={() => setShowProfile(false)}
           onLogout={handleLogout}
+          setCurrentUser={setCurrentUser}
         />
       )}
 

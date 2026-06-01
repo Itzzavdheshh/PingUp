@@ -10,6 +10,8 @@ const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const YEARS = Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i);
 
 export default function Register({ onLogin, onSwitch }) {
+  const API_URL = import.meta.env.VITE_API_URL;
+  console.log(API_URL);
   const [form, setForm] = useState({
     email: '',
     displayName: '',
