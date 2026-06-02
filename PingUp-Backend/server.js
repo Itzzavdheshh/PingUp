@@ -5,6 +5,19 @@ const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Image upload setup
+const uploadDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
 const { messageQueue } = require('./services/messageQueue');
@@ -16,6 +29,7 @@ const DirectMessage = require('./models/DirectMessage');
 const { generateToken, socketAuthMiddleware, verifyToken } = require('./middleware/auth');
 const { ROLES, hasPermission } = require('./data/store'); // <-- IMPORTED WEIGHT SYSTEM
 
+const ServerSettings = require('./models/ServerSettings');
 const app = express();
 const server = http.createServer(app);
 
@@ -43,6 +57,15 @@ app.use(
     })
 );
 app.use(express.json());
+// Serve uploaded images
+app.use('/uploads', express.static(uploadDir));
+
+// Image upload route
+app.post('/api/upload', verifyToken, upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const imageUrl = `/uploads/${req.file.filename}`;
+  res.json({ imageUrl });
+});
 
 
 // ─── Role Helpers ──────────────────────────────────────────────────
@@ -81,6 +104,21 @@ async function broadcastStructure() {
         categoryMap.get(catKey).channels.push(roomToChannel(r));
     }
     io.emit('structure:update', [...categoryMap.values()]);
+}
+
+// ─── Server Settings helpers ──────────────────────────────────────
+async function getServerSetting(key, defaultValue) {
+    try {
+        const setting = await ServerSettings.findOne({ key });
+        return setting ? setting.value === true : defaultValue;
+    } catch {
+        return defaultValue;
+    }
+}
+
+async function broadcastSettings() {
+    const allowUserChannelCreation = await getServerSetting('allowUserChannelCreation', false);
+    io.emit('settings:update', { allowUserChannelCreation });
 }
 
 function roomToChannel(r) {
@@ -238,13 +276,24 @@ app.put('/api/profile', async (req, res) => {
     try {
         const decoded = authHeader(req, res);
         if (!decoded) return;
-        const { displayName, email, phone } = req.body;
-        const user = await User.findByIdAndUpdate(
-            decoded.id, { displayName, email, phone }, { new: true }
-        );
+        const updates = {
+            ...(req.body.username !== undefined ? { username: req.body.username.trim().toLowerCase() } : {}),
+            ...(req.body.displayName !== undefined ? { displayName: req.body.displayName.trim() } : {}),
+            ...(req.body.email !== undefined ? { email: req.body.email.trim() } : {}),
+            ...(req.body.phone !== undefined ? { phone: req.body.phone.trim() } : {}),
+        };
+        const user = await User.findByIdAndUpdate(decoded.id, updates, {
+          new: true,
+          runValidators: true
+        });
+        if (!user) return res.status(404).json({ error: 'User not found.' });
         res.json({ user: user.toSafeObject() });
-    } catch (err) {
-        res.status(500).json({ error: 'Server error.' });
+    }catch (err) {
+        if (err?.code === 11000 && err?.keyPattern?.username) {
+           return res.status(409).json({ error: 'Username already taken.' });
+        }
+        console.error(err);
+        return res.status(500).json({ error: 'Server error.' });
     }
 });
 
@@ -471,12 +520,14 @@ async function processCommand(socket, roomName, text) {
             if (!isOwner) return perm('Admin only.');
             const [oldName, newName] = args;
             if (!oldName || !newName) return err('Usage: /renamechannel <old> <new>');
+            const formattedNewName = newName.toLowerCase().replace(/\s+/g, '-');
             const room = await Room.findOneAndUpdate(
                 { name: oldName.toLowerCase() },
-                { name: newName.toLowerCase().replace(/\s+/g, '-') },
+                { name: formattedNewName },
                 { new: true }
             );
             if (!room) return err(`#${oldName} not found.`);
+            await Message.updateMany({ roomName: oldName.toLowerCase() }, { roomName: formattedNewName });
             await broadcastStructure();
             ok(`#${oldName} → #${newName}.`);
             break;
@@ -629,12 +680,15 @@ async function processCommand(socket, roomName, text) {
 io.use(socketAuthMiddleware);
 
 io.on('connection', async (socket) => {
-    const dbUser = await User.findById(socket.user.id);
-    if (!dbUser) return socket.disconnect();
-    if (dbUser.banned) {
-        socket.emit('kicked', { by: 'server (banned)' });
-        return socket.disconnect();
-    }
+    let dbUser = null;
+    try{
+        dbUser = await User.findById(socket.user.id);
+        if (!dbUser) return socket.disconnect();
+        if (dbUser.banned) {
+            socket.emit('kicked', { by: 'server (banned)' });
+            return socket.disconnect();
+        }
+    
 
     // Sync role from DB
     socket.user.role = dbUser.role;
@@ -648,20 +702,28 @@ io.on('connection', async (socket) => {
     const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
     const categoryMap = new Map();
     for (const r of rooms) {
-        if (r.isPrivate && dbUser.role === ROLES.MEMBER) continue;
+        if (r.isPrivate && socket.user.role === ROLES.MEMBER) continue;
         const catKey = r.category || 'general';
         if (!categoryMap.has(catKey))
             categoryMap.set(catKey, { id: `cat-${catKey}`, name: catKey, channels: [] });
         categoryMap.get(catKey).channels.push(roomToChannel(r));
     }
     socket.emit('structure:update', [...categoryMap.values()]);
+    const allowUserChannelCreation = await getServerSetting('allowUserChannelCreation', false);
+    socket.emit('settings:update', { allowUserChannelCreation });
     console.log(`[+] ${socket.user.username} (${socket.user.role})`);
+}catch(err){
+    console.error('[connection] setup error:', err);
+    socket.emit('error:general', 'Connection setup failed.');
+    socket.disconnect();
+    return;
+}
 
     // ── Join channel (by name) ─────────────────────────────────────
     socket.on('room:join', safeSocketHandler(socket, 'room:join', async ({ roomName }) => {
         const room = await Room.findOne({ name: roomName });
         if (!room) return socket.emit('error:general', 'Channel not found.');
-        if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
@@ -699,7 +761,7 @@ io.on('connection', async (socket) => {
     socket.on('channel:join', safeSocketHandler(socket, 'channel:join', async ({ channelId }) => {
         const room = await Room.findById(channelId);
         if (!room) return socket.emit('error:general', 'Channel not found.');
-        if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
@@ -738,9 +800,9 @@ io.on('connection', async (socket) => {
         safeSocketHandler(
             socket,
             'message:send',
-            async ({ roomName, channelId, text, parentMessageId }) => {
+            async ({ roomName, channelId, text, parentMessageId, imageUrl }) => {
                 const trimmed = text?.trim();
-                if (!trimmed) return;
+               if (!trimmed && !imageUrl) return;
 
                 let resolvedRoom = roomName;
                 let room = null;
@@ -775,15 +837,16 @@ io.on('connection', async (socket) => {
                     username: socket.user.username,
                     role: freshUser.role,
                     text: trimmed,
-                    parentMessageId: parentMessageId || null,
+                    parentMessageId: parentMessageId || null, 
+                    imageUrl: imageUrl || null,
                 });
 
                 const payload = {
                     id: msgId.toString(), userId: socket.user.id,
                     username: socket.user.username, role: freshUser.role,
-                    text: trimmed, timestamp: msg.createdAt, deleted: false, pinned: false,
-                    parentMessageId: msg.parentMessageId,
-                    replyCount: msg.replyCount,
+                    text: trimmed, timestamp: new Date(), deleted: false, pinned: false,
+parentMessageId: parentMessageId || null,
+replyCount: 0, imageUrl: imageUrl || null,
                 };
 
                 io.to(resolvedRoom).emit('message:new', payload);
@@ -806,8 +869,14 @@ io.on('connection', async (socket) => {
 
     // ── Owner: channel CRUD ────────────────────────────────────────
     socket.on('channel:create', safeSocketHandler(socket, 'channel:create', async ({ categoryId, name, description, emoji }) => {
-        if (socket.user.role !== 'owner')
-            return socket.emit('error:permission', 'Owner only.');
+        const allowUserChannelCreation = await getServerSetting('allowUserChannelCreation', false);
+        const isOwner = socket.user.role === 'owner';
+        const isMod = ['owner', 'moderator'].includes(socket.user.role);
+
+        if (!isOwner && !allowUserChannelCreation)
+            return socket.emit('error:permission', 'Channel creation is restricted to admins.');
+        if (!isOwner && !isMod && !allowUserChannelCreation)
+            return socket.emit('error:permission', 'You do not have permission to create channels.');
         if (!name?.trim()) return;
         const exists = await Room.findOne({ name: name.trim().toLowerCase() });
         if (exists) return socket.emit('error:general', 'Channel name already exists.');
@@ -835,12 +904,17 @@ io.on('connection', async (socket) => {
         if (socket.user.role !== 'owner')
             return socket.emit('error:permission', 'Owner only.');
         if (!newName?.trim()) return;
-        const room = await Room.findByIdAndUpdate(
-            channelId,
-            { name: newName.trim().toLowerCase().replace(/\s+/g, '-') },
-            { new: true }
-        );
-        if (room) await broadcastStructure();
+        
+        const room = await Room.findById(channelId);
+        if (!room) return;
+        const oldName = room.name;
+        const formattedNewName = newName.trim().toLowerCase().replace(/\s+/g, '-');
+        
+        room.name = formattedNewName;
+        await room.save();
+        
+        await Message.updateMany({ roomName: oldName }, { roomName: formattedNewName });
+        await broadcastStructure();
     }, 'Failed to rename channel.'));
 
     socket.on('channel:toggleReadOnly', safeSocketHandler(socket, 'channel:toggleReadOnly', async ({ channelId }) => {
@@ -889,27 +963,68 @@ io.on('connection', async (socket) => {
         });
     }, 'Failed to update channel settings.'));
 
+     // ── Server Settings ────────────────────────────────────────────
+    socket.on('settings:get', safeSocketHandler(socket, 'settings:get', async () => {
+        const allowUserChannelCreation = await getServerSetting('allowUserChannelCreation', false);
+        socket.emit('settings:update', { allowUserChannelCreation });
+    }, 'Failed to get settings.'));
+
+    socket.on('settings:update', safeSocketHandler(socket, 'settings:update', async (payload) => {
+        // Validate payload is a non-null object
+        if (!payload || typeof payload !== 'object')
+            return socket.emit('error:general', 'Invalid settings payload.');
+
+        const { key, value } = payload;
+
+        // Validate key exists
+        if (!key)
+            return socket.emit('error:general', 'Settings key is required.');
+
+        if (socket.user.role !== 'owner')
+            return socket.emit('error:permission', 'Owner only.');
+
+        // Validate allowed keys
+        const ALLOWED_KEYS = ['allowUserChannelCreation'];
+        if (!ALLOWED_KEYS.includes(key))
+            return socket.emit('error:general', `Invalid settings key: ${key}`);
+
+        // Enforce boolean value
+        if (typeof value !== 'boolean')
+            return socket.emit('error:general', 'Settings value must be a boolean.');
+
+        await ServerSettings.findOneAndUpdate(
+            { key },
+            { value },
+            { upsert: true, new: true }
+        );
+        await broadcastSettings();
+    }, 'Failed to update settings.'));
+
     // ── Pin / delete message ───────────────────────────────────────
-    socket.on('message:pin', safeSocketHandler(socket, 'message:pin', async ({ channelId, roomName: rName, messageId }) => {
+    socket.on('message:pin', safeSocketHandler(socket, 'message:pin', async ({ messageId }) => {
         if (!['owner', 'moderator'].includes(socket.user.role))
             return socket.emit('error:permission', 'Moderators only.');
-        const query = channelId ? { _id: channelId } : { name: rName };
+        const query = socket.currentChannelId ? { _id: socket.currentChannelId } : { name: socket.currentRoom };
         const room = await Room.findOne(query);
         if (!room) return;
         const msg = await Message.findById(messageId);
         if (!msg) return;
+        
+        // Prevent IDOR: Verify message belongs to the target room
+        if (msg.roomName !== room.name) 
+            return socket.emit('error:permission', 'Message does not belong to this room.');
         const alreadyPinned = room.pinnedMessages.some(id => id.toString() === messageId);
         if (alreadyPinned) {
             room.pinnedMessages = room.pinnedMessages.filter(id => id.toString() !== messageId);
             await room.save();
-            const bc = channelId ? io.to(channelId) : io.to(rName);
+            const bc = socket.currentChannelId ? io.to(socket.currentChannelId) : io.to(socket.currentRoom);
             bc.emit('message:unpinned', { id: messageId });
         } else {
             if (room.pinnedMessages.length >= 50)
                 return socket.emit('error:general', 'Maximum 50 pinned messages reached.');
             room.pinnedMessages.push(messageId);
             await room.save();
-            const bc = channelId ? io.to(channelId) : io.to(rName);
+            const bc = socket.currentChannelId ? io.to(socket.currentChannelId) : io.to(socket.currentRoom);
             bc.emit('message:pinned', {
                 id: messageId, text: msg.text,
                 username: msg.username, pinnedBy: socket.user.username,
@@ -917,19 +1032,29 @@ io.on('connection', async (socket) => {
         }
     }, 'Failed to pin message.'));
 
-    socket.on('message:delete', safeSocketHandler(socket, 'message:delete', async ({ channelId, roomName: rName, messageId }) => {
+    socket.on('message:delete', safeSocketHandler(socket, 'message:delete', async ({ messageId }) => {
         if (!['owner', 'moderator'].includes(socket.user.role))
             return socket.emit('error:permission', 'Moderators only.');
+            
+        // Look up message first to verify room ownership
+        const targetMsg = await Message.findById(messageId);
+        if (!targetMsg) return;
+        
+        const query = socket.currentChannelId ? { _id: socket.currentChannelId } : { name: socket.currentRoom };
+        const resolvedRoom = await Room.findOne(query);
+        if (!resolvedRoom || targetMsg.roomName !== resolvedRoom.name)
+            return socket.emit('error:permission', 'Message does not belong to this room.');
+
         const msg = await Message.findByIdAndUpdate(
             messageId, { deleted: true, text: '[message deleted]' }, { new: true }
         );
         if (!msg) return;
-        const bc = channelId ? io.to(channelId) : io.to(rName);
+        const bc = socket.currentChannelId ? io.to(socket.currentChannelId) : io.to(socket.currentRoom);
         bc.emit('message:deleted', { id: messageId });
     }, 'Failed to delete message.'));
 
     // ── Edit Message ───────────────────────────────────────────────
-    socket.on('message:edit', async ({ channelId, roomName: rName, messageId, newText }) => {
+    socket.on('message:edit',safeSocketHandler(socket,'message:edit', async ({ channelId, roomName: rName, messageId, newText }) => {
         const trimmed = newText?.trim();
         if (!trimmed) return socket.emit('error:message', 'Cannot edit message to empty text.');
 
@@ -973,7 +1098,7 @@ io.on('connection', async (socket) => {
 
         const bc = channelId ? io.to(channelId) : io.to(rName);
         bc.emit('message:edited', payload);
-    });
+    },'Failed to edit message.'));
 
     socket.on(
         'thread:get',
@@ -983,6 +1108,17 @@ io.on('connection', async (socket) => {
             async ({ parentMessageId }) => {
 
                 if (!parentMessageId) return;
+
+                const parentMsg = await Message.findById(parentMessageId);
+                if (!parentMsg) return socket.emit('error:general', 'Parent message not found.');
+
+                // Prevent IDOR: Check room access
+                const room = await Room.findOne({ name: parentMsg.roomName });
+                if (!room) return socket.emit('error:permission', 'Forbidden: This thread is unavailable.');
+                if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
+                    const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
+                    if (!allowed) return socket.emit('error:permission', 'Forbidden: This thread is in a private channel.');
+                }
 
                 const replies = await Message.find({
                     parentMessageId,
