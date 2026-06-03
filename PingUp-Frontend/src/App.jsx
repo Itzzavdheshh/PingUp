@@ -29,6 +29,8 @@ export default function App() {
   const [activeChannel, setActiveChannel] = useState(null);
   const [roomSettings,  setRoomSettings]  = useState(null);
   const [messages,      setMessages]      = useState([]);
+  const [selectedThread, setSelectedThread] = useState(null);
+const [threadReplies, setThreadReplies] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [commandResps,  setCommandResps]  = useState([]);
   const [typingUsers,   setTypingUsers]   = useState([]);
@@ -40,13 +42,31 @@ export default function App() {
   const [showAdmin,     setShowAdmin]     = useState(false);
   const [activeDM,      setActiveDM]      = useState(null);
   const [dmNotifs,      setDmNotifs]      = useState([]);
+  const [sessionMsg, setSessionMsg] = useState(null);
   const [dmToast,       setDmToast]       = useState(null);
+  const [allowUserChannelCreation, setAllowUserChannelCreation] = useState(false);
 
   const socketRef = useRef(null);
 
   const isVoiceChannel = activeChannel && VOICE_CHANNELS.includes(activeChannel.name);
   const isOwner        = currentUser?.role === 'owner';
-  const isMod          = ['owner', 'moderator'].includes(currentUser?.role);
+
+  const handleLogout = useCallback(() => {
+    disconnectSocket();
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setCurrentUser(null);
+    setToken('');
+    setActiveChannel(null);
+    setActiveDM(null);
+    setMessages([]);
+    setOnlineUsers([]);
+    setShowProfile(false);
+    setShowFriends(false);
+    setShowAdmin(false);
+    setAllowUserChannelCreation(false);
+    setAuthPage('login');
+  }, []);
 
   // ── Socket setup ───────────────────────────────────────────────
   useEffect(() => {
@@ -55,8 +75,16 @@ export default function App() {
     socketRef.current = socket;
     socket.connect();
 
+    socket.on('connect', () => {
+        socket.emit('settings:get');
+    });
+
     socket.on('users:update', setOnlineUsers);
     socket.on('structure:update', setCategories);
+
+    socket.on('settings:update', ({ allowUserChannelCreation }) => {
+        setAllowUserChannelCreation(allowUserChannelCreation);
+    });
 
     socket.on('role:updated', ({ role }) => {
       setCurrentUser(u => {
@@ -98,9 +126,42 @@ export default function App() {
       setCommandResps(prev => [...prev, res])
     );
 
-    socket.on('message:new', msg =>
-      setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg])
+    socket.on('message:new', (msg) => {
+
+  if (msg.parentMessageId) {
+    setThreadReplies(prev =>
+      prev.find(m => m.id === msg.id)
+        ? prev
+        : [...prev, msg]
     );
+
+    setMessages(prev =>
+      prev.map(m =>
+        m.id === msg.parentMessageId
+          ? {
+              ...m,
+              replyCount: (m.replyCount || 0) + 1
+            }
+          : m
+      )
+    );
+
+    return;
+  }
+
+ if (!msg.parentMessageId) {
+  setMessages(prev =>
+    prev.find(m => m.id === msg.id)
+      ? prev
+      : [...prev, msg]
+  );
+}
+});
+
+    socket.on('thread:history', ({ replies }) => {
+  setThreadReplies(replies || []);
+});
+
     socket.on('message:deleted', ({ id }) =>
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
@@ -111,6 +172,17 @@ export default function App() {
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
       )
     );
+
+    socket.on('message:reaction:update', ({ messageId, reactions }) => {
+  setMessages(prev =>
+    prev.map(m =>
+      String(m.id) === String(messageId)
+        ? { ...m, reactions }
+        : m
+    )
+  );
+});
+
     socket.on('message:pinned', ({ id, pinnedBy }) => {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, pinned: true } : m));
       setNotifications(prev => [...prev, `📌 Message pinned by ${pinnedBy}`]);
@@ -145,32 +217,33 @@ export default function App() {
     );
     socket.on('error:general', msg => console.error('[socket]', msg));
 
+    socket.on('connect_error', (err) => {
+      if (['INVALID_TOKEN', 'AUTH_REQUIRED', 'USER_NOT_FOUND'].includes(err.message)) {
+        console.error('[socket] Auth error:', err.message);
+        setSessionMsg('Your session has expired. Please log in again.');
+        handleLogout();
+      }
+    });
+
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') {
+        console.error('[socket] Server disconnected this client:', reason);
+        setSessionMsg('You were disconnected by the server. Please log in again.');
+        handleLogout();
+      }
+    });
     return () => socket.removeAllListeners();
-  }, [token, currentUser?.id]);
+  }, [token, currentUser,  handleLogout]);
 
   // ── Auth ───────────────────────────────────────────────────────
   const handleLogin = (user, tok) => {
     setCurrentUser(user);
     setToken(tok);
+    setSessionMsg(null); 
     localStorage.setItem('token', tok);
     localStorage.setItem('user',  JSON.stringify(user));
   };
 
-  const handleLogout = useCallback(() => {
-    disconnectSocket();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setCurrentUser(null);
-    setToken('');
-    setActiveChannel(null);
-    setActiveDM(null);
-    setMessages([]);
-    setOnlineUsers([]);
-    setShowProfile(false);
-    setShowFriends(false);
-    setShowAdmin(false);
-    setAuthPage('login');
-  }, []);
 
   // ── Channel select ─────────────────────────────────────────────
   const handleChannelSelect = useCallback((ch) => {
@@ -188,12 +261,13 @@ export default function App() {
   }, []);
 
   // ── Messaging ──────────────────────────────────────────────────
-  const handleSend = useCallback((text) => {
+  const handleSend = useCallback((text, imageUrl) => {
     if (!activeChannel) return;
     socketRef.current?.emit('message:send', {
       channelId: activeChannel.id,
       roomName:  activeChannel.name,
       text,
+      imageUrl,
     });
   }, [activeChannel]);
 
@@ -201,6 +275,23 @@ export default function App() {
     if (!activeChannel) return;
     socketRef.current?.emit('typing:start', { channelId: activeChannel.id });
   }, [activeChannel]);
+
+  const handleOpenThread = useCallback((message) => {
+
+  if (!message) {
+    setSelectedThread(null);
+    setThreadReplies([]);
+    return;
+  }
+
+  setSelectedThread(message);
+  setThreadReplies([]);
+
+  socketRef.current?.emit('thread:get', {
+    parentMessageId: message.id,
+  });
+
+}, []);
 
   const handleTypingStop = useCallback(() => {
     if (!activeChannel) return;
@@ -219,10 +310,26 @@ export default function App() {
 
   // ── Not logged in ──────────────────────────────────────────────
   if (!currentUser) {
-    if (authPage === 'register')
-      return <Register onLogin={handleLogin} onSwitch={() => setAuthPage('login')} />;
-    return <Login onLogin={handleLogin} onSwitch={() => setAuthPage('register')} />;
-  }
+  return (
+    <>
+      {sessionMsg && (
+        <div style={{
+          background: '#f87171',
+          color: '#fff',
+          padding: '12px 20px',
+          textAlign: 'center',
+          fontWeight: 500,
+        }}>
+          {sessionMsg}
+        </div>
+      )}
+      {authPage === 'login'
+        ? <Login onLogin={handleLogin} onSwitch={() => setAuthPage('register')} />
+        : <Register onRegister={handleLogin} onSwitch={() => setAuthPage('login')} />
+      }
+    </>
+  );
+}
 
   // ── Render helpers ─────────────────────────────────────────────
   function renderChatArea() {
@@ -239,6 +346,7 @@ export default function App() {
             token={token}
             onClose={() => setShowAdmin(false)}
             embedded
+            allowUserChannelCreation={allowUserChannelCreation}
           />
         </div>
       );
@@ -344,6 +452,9 @@ export default function App() {
             channelId={activeChannel.id}
             roomName={activeChannel.name}
             roomSettings={roomSettings}
+            selectedThread={selectedThread}
+threadReplies={threadReplies}
+onOpenThread={handleOpenThread}
           />
           <MessageInput
             onSend={handleSend}
@@ -391,6 +502,7 @@ export default function App() {
         onChannelSelect={handleChannelSelect}
         onLogout={handleLogout}
         onOpenProfile={() => setShowProfile(true)}
+        allowUserChannelCreation={allowUserChannelCreation}
         onShowFriends={() => {
           setShowFriends(true);
           setActiveChannel(null);
@@ -442,6 +554,7 @@ export default function App() {
           user={currentUser}
           onClose={() => setShowProfile(false)}
           onLogout={handleLogout}
+          setCurrentUser={setCurrentUser}
         />
       )}
 
