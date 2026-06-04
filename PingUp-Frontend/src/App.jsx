@@ -162,16 +162,22 @@ const [threadReplies, setThreadReplies] = useState([]);
   setThreadReplies(replies || []);
 });
 
-    socket.on('message:deleted', ({ id }) =>
+    socket.on('message:deleted', ({ id }) => {
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
-      )
-    );
-    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) =>
+      );
+      setThreadReplies(prev =>
+        prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
+      );
+    });
+    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) => {
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
-      )
-    );
+      );
+      setThreadReplies(prev =>
+        prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
+      );
+    });
 
     socket.on('message:reaction:update', ({ messageId, reactions }) => {
   setMessages(prev =>
