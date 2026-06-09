@@ -181,7 +181,7 @@ app.post('/api/register', async (req, res) => {
 
         const userCount = await User.countDocuments();
         const isFirst = userCount === 0;
-        const role = isFirst ? ROLES.OWNER : ROLES.MEMBER;
+        const role = isFirst ? ROLES.ADMIN : ROLES.MEMBER;
 
         const user = await User.create({
             username: username.trim().toLowerCase(),
@@ -486,7 +486,7 @@ async function processCommand(socket, roomName, text) {
     const [cmd, ...args] = text.slice(1).split(' ');
 
     // Use the new Weight-based checker!
-    const isOwner = hasPermission(socket.user.role, ROLES.OWNER);
+    const isOwner = hasPermission(socket.user.role, ROLES.ADMIN);
     const isMod = hasPermission(socket.user.role, ROLES.MODERATOR);
     console.log(`[DEBUG] User Role: ${socket.user.role} | isOwner: ${isOwner}`);
     const ok = msg => socket.emit('command:response', { type: 'success', text: `✅ ${msg}` });
@@ -597,7 +597,7 @@ async function processCommand(socket, roomName, text) {
             if (!isMod) return perm('Moderators only.');
             const target = await User.findOne({ username: args[0], online: true });
             if (!target) return err('User not found or offline.');
-            if (target.role === ROLES.OWNER) return err('Cannot kick the admin.');
+            if (target.role === ROLES.ADMIN) return err('Cannot kick the admin.');
             if (socket.user.role === ROLES.MODERATOR && target.role !== ROLES.MEMBER)
                 return err('Moderators can only kick members.');
             const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === target._id.toString());
@@ -739,10 +739,14 @@ async function processCommand(socket, roomName, text) {
             const [targetName, newRole] = args;
             if (![ROLES.MODERATOR, ROLES.MEMBER].includes(newRole))
                 return err('Role must be: moderator or member');
-            const targetUser = await User.findOneAndUpdate(
-                { username: targetName }, { role: newRole }, { new: true }
-            );
+            // Lookup first so we can guard the target role before any write
+            // (prevents owners from demoting themselves or other owners —
+            //  matches the existing /kick, /reroll, /ban pattern).
+            const targetUser = await User.findOne({ username: targetName });
             if (!targetUser) return err('User not found.');
+            if (targetUser.role === ROLES.ADMIN)
+                return err('Cannot change the admin role.');
+            await User.updateOne({ _id: targetUser._id }, { role: newRole });
             const ls = [...io.sockets.sockets.values()].find(s => s.user?.id === targetUser._id.toString());
             if (ls) { ls.user.role = newRole; ls.emit('role:updated', { role: newRole }); }
             await broadcastUserList();
@@ -755,7 +759,7 @@ async function processCommand(socket, roomName, text) {
             if (!isOwner) return perm('Admin only.');
             const target = await User.findOne({ username: args[0] });
             if (!target) return err('User not found.');
-            if (target.role === ROLES.OWNER) return err('Cannot ban the admin.');
+            if (target.role === ROLES.ADMIN) return err('Cannot ban the admin.');
             target.banned = true;
             await target.save();
             const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === target._id.toString());
@@ -769,7 +773,7 @@ async function processCommand(socket, roomName, text) {
             if (!isOwner) return perm('Admin only.');
             const target = await User.findOne({ username: args[0] });
             if (!target) return err('User not found.');
-            if (target.role === ROLES.OWNER) return err('Cannot reroll the admin.');
+            if (target.role === ROLES.ADMIN) return err('Cannot reroll the admin.');
             const newRole = rollRole();
             target.role = newRole;
             await target.save();
@@ -962,7 +966,7 @@ io.on('connection', async (socket) => {
                 const freshUser = await User.findById(socket.user.id);
 
                 // Check using new weight permissions
-                if (room.isReadOnly && !hasPermission(freshUser.role, ROLES.OWNER))
+                if (room.isReadOnly && !hasPermission(freshUser.role, ROLES.ADMIN))
                     return socket.emit('error:permission', `#${room.name} is read-only.`);
                 if (room.isLocked)
                     return socket.emit('error:permission', `#${room.name} is locked.`);
@@ -1398,7 +1402,7 @@ replyCount: 0, imageUrl: imageUrl || null,
             return socket.emit('error:permission', 'Owner only.');
         if (!['member', 'moderator'].includes(role)) return;
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.OWNER) return;
+        if (!target || target.role === ROLES.ADMIN) return;
         target.role = role;
         await target.save();
         const ls = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
@@ -1411,7 +1415,7 @@ replyCount: 0, imageUrl: imageUrl || null,
         if (!['owner', 'moderator'].includes(socket.user.role))
             return socket.emit('error:permission', 'Insufficient permissions.');
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.OWNER) return;
+        if (!target || target.role === ROLES.ADMIN) return;
         const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
         if (ts) { ts.emit('kicked', { by: socket.user.username }); ts.disconnect(true); }
         io.emit('room:notification', { text: `👢 ${target.username} kicked`, type: 'system' });
@@ -1421,7 +1425,7 @@ replyCount: 0, imageUrl: imageUrl || null,
         if (socket.user.role !== 'owner')
             return socket.emit('error:permission', 'Owner only.');
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.OWNER) return;
+        if (!target || target.role === ROLES.ADMIN) return;
         target.banned = true;
         await target.save();
         const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
