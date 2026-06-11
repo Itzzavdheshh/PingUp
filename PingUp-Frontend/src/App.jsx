@@ -42,7 +42,9 @@ const [threadReplies, setThreadReplies] = useState([]);
   const [showAdmin,     setShowAdmin]     = useState(false);
   const [activeDM,      setActiveDM]      = useState(null);
   const [dmNotifs,      setDmNotifs]      = useState([]);
+  const [sessionMsg, setSessionMsg] = useState(null);
   const [dmToast,       setDmToast]       = useState(null);
+  const [allowUserChannelCreation, setAllowUserChannelCreation] = useState(false);
 
   const [socketInstance, setSocketInstance] = useState(null);
   const socketRef = useRef(null);
@@ -63,6 +65,7 @@ const [threadReplies, setThreadReplies] = useState([]);
     setShowProfile(false);
     setShowFriends(false);
     setShowAdmin(false);
+    setAllowUserChannelCreation(false);
     setAuthPage('login');
   }, []);
 
@@ -79,6 +82,10 @@ const [threadReplies, setThreadReplies] = useState([]);
 
     socket.on('users:update', setOnlineUsers);
     socket.on('structure:update', setCategories);
+
+    socket.on('settings:update', ({ allowUserChannelCreation }) => {
+        setAllowUserChannelCreation(allowUserChannelCreation);
+    });
 
     socket.on('role:updated', ({ role }) => {
       setCurrentUser(u => {
@@ -156,16 +163,22 @@ const [threadReplies, setThreadReplies] = useState([]);
   setThreadReplies(replies || []);
 });
 
-    socket.on('message:deleted', ({ id }) =>
+    socket.on('message:deleted', ({ id }) => {
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
-      )
-    );
-    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) =>
+      );
+      setThreadReplies(prev =>
+        prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
+      );
+    });
+    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) => {
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
-      )
-    );
+      );
+      setThreadReplies(prev =>
+        prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
+      );
+    });
 
     socket.on('message:reaction:update', ({ messageId, reactions }) => {
   setMessages(prev =>
@@ -223,6 +236,7 @@ const [threadReplies, setThreadReplies] = useState([]);
   const handleLogin = (user, tok) => {
     setCurrentUser(user);
     setToken(tok);
+    setSessionMsg(null); 
     localStorage.setItem('token', tok);
     localStorage.setItem('user',  JSON.stringify(user));
   };
@@ -244,12 +258,13 @@ const [threadReplies, setThreadReplies] = useState([]);
   }, []);
 
   // ── Messaging ──────────────────────────────────────────────────
-  const handleSend = useCallback((text) => {
+  const handleSend = useCallback((text, imageUrl) => {
     if (!activeChannel) return;
     socketRef.current?.emit('message:send', {
       channelId: activeChannel.id,
       roomName:  activeChannel.name,
       text,
+      imageUrl,
     });
   }, [activeChannel]);
 
@@ -292,10 +307,26 @@ const [threadReplies, setThreadReplies] = useState([]);
 
   // ── Not logged in ──────────────────────────────────────────────
   if (!currentUser) {
-    if (authPage === 'register')
-      return <Register onLogin={handleLogin} onSwitch={() => setAuthPage('login')} />;
-    return <Login onLogin={handleLogin} onSwitch={() => setAuthPage('register')} />;
-  }
+  return (
+    <>
+      {sessionMsg && (
+        <div style={{
+          background: '#f87171',
+          color: '#fff',
+          padding: '12px 20px',
+          textAlign: 'center',
+          fontWeight: 500,
+        }}>
+          {sessionMsg}
+        </div>
+      )}
+      {authPage === 'login'
+        ? <Login onLogin={handleLogin} onSwitch={() => setAuthPage('register')} />
+        : <Register onRegister={handleLogin} onSwitch={() => setAuthPage('login')} />
+      }
+    </>
+  );
+}
 
   // ── Render helpers ─────────────────────────────────────────────
   function renderChatArea() {
@@ -312,6 +343,7 @@ const [threadReplies, setThreadReplies] = useState([]);
             token={token}
             onClose={() => setShowAdmin(false)}
             embedded
+            allowUserChannelCreation={allowUserChannelCreation}
           />
         </div>
       );
@@ -467,6 +499,7 @@ const [threadReplies, setThreadReplies] = useState([]);
         onChannelSelect={handleChannelSelect}
         onLogout={handleLogout}
         onOpenProfile={() => setShowProfile(true)}
+        allowUserChannelCreation={allowUserChannelCreation}
         onShowFriends={() => {
           setShowFriends(true);
           setActiveChannel(null);

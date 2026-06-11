@@ -109,7 +109,7 @@ export default function AdminPanel({ currentUser, socket, categories, token, onC
 
         {/* Tabs */}
         <div className="admin-tabs">
-          {['channels', 'users', 'roles'].map(t => (
+          {['channels', 'users', 'roles','settings'].map(t => (
             <button
               key={t}
               className={`admin-tab ${tab === t ? 'active' : ''}`}
@@ -118,6 +118,7 @@ export default function AdminPanel({ currentUser, socket, categories, token, onC
               {t === 'channels' && '🏠 Channels'}
               {t === 'users'    && '👥 Users'}
               {t === 'roles'    && '🔰 Roles'}
+              {t === 'settings' && '⚙️ Settings'}
             </button>
           ))}
         </div>
@@ -342,6 +343,38 @@ export default function AdminPanel({ currentUser, socket, categories, token, onC
             </div>
           )}
 
+          {/* ── Settings tab ──────────────────────────────────────── */}
+          {tab === 'settings' && (
+            <div className="admin-section">
+              <p className="admin-hint">
+                Control server-wide permissions and feature toggles.
+              </p>
+              <div className="admin-setting-row">
+                <div className="admin-setting-info">
+                  <span className="admin-setting-label">
+                    Allow members/moderators to create channels
+                  </span>
+                  <span className="admin-setting-desc">
+                    When enabled, non-admin users can create new 
+                    channels in any category.
+                  </span>
+                </div>
+                <button
+                  className={`admin-toggle ${allowUserChannelCreation ? 'on' : 'off'}`}
+                  onClick={() => {
+                    socket?.emit('settings:update', {
+                      key: 'allowUserChannelCreation',
+                      value: !allowUserChannelCreation,
+                    });
+                    notify(`Channel creation ${!allowUserChannelCreation ? 'enabled' : 'disabled'} for all users`);
+                  }}
+                >
+                  {allowUserChannelCreation ? '✅ ON' : '❌ OFF'}
+                </button>
+              </div>
+            </div>
+          )}
+        
         </div>
       </div>
     </div>
