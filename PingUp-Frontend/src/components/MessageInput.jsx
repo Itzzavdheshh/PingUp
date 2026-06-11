@@ -47,7 +47,7 @@ export default function MessageInput({
           throw new Error('Upload failed');
         }
         imageUrl = data.imageUrl;
-      } catch (err) {
+      } catch (_err) {
         alert('Image upload failed');
         setUploading(false);
         return;
@@ -82,7 +82,7 @@ export default function MessageInput({
       if (uploading || (!text.trim() && !imageFile) || isDisabled) return;
       handleSend();
     }
-  }, [text, isDisabled, imageFile, uploading]);
+  }, [text, isDisabled, imageFile, uploading, handleSend]);
 
   const handleChange = useCallback((e) => {
     setText(e.target.value);

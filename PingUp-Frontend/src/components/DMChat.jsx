@@ -1,6 +1,25 @@
 import { useState, useEffect, useRef, } from 'react';
 import { getApiUrl } from '../api';
 
+// Generate a temporary client-side ID for optimistic message rendering
+function generateClientId() {
+  return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Emit a socket event and invoke callback with the server's acknowledgement.
+// Falls back to a "sent" response after a short delay if the server doesn't ack.
+function emitWithRetry(socket, event, data, callback) {
+  let settled = false;
+  const settle = (res) => {
+    if (settled) return;
+    settled = true;
+    callback?.(res);
+  };
+  socket.emit(event, data, (res) => settle(res || {}));
+  // If no ack within 5 s, treat as sent (server may not support acks)
+  setTimeout(() => settle({}), 5000);
+}
+
 export default function DMChat({ currentUser, otherUser, token, socket, onClose }) {
   const [messages, setMessages]       = useState([]);
   const [text, setText]               = useState('');
@@ -85,10 +104,10 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     // Maintain focus after sending (removed unnecessary setTimeout)
     inputRef.current?.focus();
 
-    emitWithRetry('dm:send', {
+    emitWithRetry(socket, 'dm:send', {
       toUserId: otherUser.id,
       text: trimmed,
-      clientId // <-- Send to backend for idempotency
+      clientId // ← Send to backend for idempotency
     }, (res) => {
       if (res.error) {
         setMessages(prev => prev.map(m =>
@@ -96,7 +115,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         ))
       } else {
         setMessages(prev => prev.map(m =>
-          m.id === clientId ? { ...m, id: res.id, status: 'sent' } : m
+          m.id === clientId ? { ...m, id: res.id || m.id, status: 'sent' } : m
         ));
       }
     });

@@ -45,6 +45,7 @@ export default function DMSidebar({
   const [chForm,          setChForm]          = useState({ name: '', description: '', emoji: '💬' });
 
   const isOwner = currentUser?.role === 'owner';
+  const canCreateChannel = isOwner || !!allowUserChannelCreation;
 
   // ── Derive display list ─────────────────────────────────────────
   const displayCategories = (() => {

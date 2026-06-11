@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '../api';
 
-export default function AdminPanel({ currentUser, socket, categories, token, onClose }) {
+export default function AdminPanel({ currentUser, socket, categories, token, onClose, allowUserChannelCreation }) {
   const [tab,         setTab]         = useState('channels'); // 'channels' | 'users' | 'roles'
   const [allUsers,    setAllUsers]    = useState([]);
   const [loadingUsers,setLoadingUsers]= useState(false);
   const [notification,setNotification]= useState('');
+  const [settings,    setSettings]    = useState({
+    allowUserChannelCreation: allowUserChannelCreation ?? true,
+  });
 
 
   // Fetch all users for user management
@@ -360,16 +363,18 @@ export default function AdminPanel({ currentUser, socket, categories, token, onC
                   </span>
                 </div>
                 <button
-                  className={`admin-toggle ${allowUserChannelCreation ? 'on' : 'off'}`}
+                  className={`admin-toggle ${settings.allowUserChannelCreation ? 'on' : 'off'}`}
                   onClick={() => {
+                    const newValue = !settings.allowUserChannelCreation;
+                    setSettings(prev => ({ ...prev, allowUserChannelCreation: newValue }));
                     socket?.emit('settings:update', {
                       key: 'allowUserChannelCreation',
-                      value: !allowUserChannelCreation,
+                      value: newValue,
                     });
-                    notify(`Channel creation ${!allowUserChannelCreation ? 'enabled' : 'disabled'} for all users`);
+                    notify(`Channel creation ${newValue ? 'enabled' : 'disabled'} for all users`);
                   }}
                 >
-                  {allowUserChannelCreation ? '✅ ON' : '❌ OFF'}
+                  {settings.allowUserChannelCreation ? '✅ ON' : '❌ OFF'}
                 </button>
               </div>
             </div>
