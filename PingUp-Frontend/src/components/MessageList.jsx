@@ -107,21 +107,38 @@ export default function MessageList({
         ) : (
           pinnedMessages.map((msg) => (
             <div
-  key={msg.id}
-  className="msg-pinned-sidebar-item"
-  onClick={(e) => {
-    e.stopPropagation();
-
-    document
-      .getElementById(`message-${msg.id}`)
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-
-    setShowPinnedSidebar(false);
-  }}
->
+            key={msg.id}
+            className="msg-pinned-sidebar-item"
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+          
+              document
+                .getElementById(`message-${msg.id}`)
+                ?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+          
+              setShowPinnedSidebar(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+          
+                document
+                  .getElementById(`message-${msg.id}`)
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+          
+                setShowPinnedSidebar(false);
+              }
+            }}
+          >
               <strong>{msg.username}</strong>
 
               <span className="msg-pinned-time">
@@ -191,16 +208,14 @@ export default function MessageList({
           </div>
         </div>
       )}
-      {pinnedMessages.length > 0 && (
-  <div className="msg-pinned-toolbar">
-    <button
-      className="msg-pinned-toggle-btn"
-      onClick={() => setShowPinnedSidebar(true)}
-    >
-      📌 Pinned ({pinnedMessages.length})
-    </button>
-  </div>
-)}
+      <div className="msg-pinned-toolbar">
+  <button
+    className="msg-pinned-toggle-btn"
+    onClick={() => setShowPinnedSidebar(true)}
+  >
+    📌 Pinned ({pinnedMessages.length})
+  </button>
+</div>
       {/* ── Pinned messages banner ── */}
       {/* {pinnedMessages.length > 0 && (
         <div className="msg-pinned-banner">
