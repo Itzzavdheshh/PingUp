@@ -242,7 +242,8 @@ app.post('/api/login', async (req, res) => {
 
 // ─── Refresh Route ────────────────────────────────────────────────
 app.post('/api/refresh', async (req, res) => {
-    const { refreshToken } = req.body;
+    const refreshToken =
+        req.body && typeof req.body === 'object' ? req.body.refreshToken : undefined;
 
     // Strict validation: refreshToken must exist and be a primitive string.
     // This blocks NoSQL Query Object injection (e.g. passing { $ne: null }).
@@ -281,7 +282,8 @@ app.post('/api/refresh', async (req, res) => {
 // ─── Logout ────────────────────────────────────────────────
 app.post('/api/logout', async (req, res) => {
     try {
-        const { refreshToken } = req.body;
+        const refreshToken =
+            req.body && typeof req.body === 'object' ? req.body.refreshToken : undefined;
         
         // Strict validation: refreshToken must exist and be a primitive string.
         // Bypassing this with a query object ({ $ne: null }) could match unintended users.

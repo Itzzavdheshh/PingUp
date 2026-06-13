@@ -3,10 +3,12 @@ const { hasPermission, ROLES } = require('../data/store');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const allowDevFallback = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.trim().length === 0) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('FATAL: JWT_SECRET environment variable is required in production.');
+  if (!allowDevFallback) {
+    console.error('FATAL: JWT_SECRET environment variable is required.');
     process.exit(1);
   }
   console.warn('WARNING: JWT_SECRET is not defined. Falling back to default development secret.');
@@ -16,8 +18,8 @@ const JWT_SECRET = (jwtSecret && jwtSecret.trim()) || 'internal_network_secret_2
 
 const refreshSecretEnv = process.env.REFRESH_SECRET;
 if (!refreshSecretEnv || refreshSecretEnv.trim().length === 0) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('FATAL: REFRESH_SECRET environment variable is required in production.');
+  if (!allowDevFallback) {
+    console.error('FATAL: REFRESH_SECRET environment variable is required.');
     process.exit(1);
   }
   console.warn('WARNING: REFRESH_SECRET is not defined. Falling back to default development secret.');

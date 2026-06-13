@@ -221,3 +221,67 @@ test('middleware warns in development environment when JWT_SECRET and REFRESH_SE
     delete require.cache[require.resolve('../middleware/auth')];
   }
 });
+
+test('middleware exits process in production if JWT_SECRET is missing', () => {
+  const originalJwtSecret = process.env.JWT_SECRET;
+  const originalRefreshSecret = process.env.REFRESH_SECRET;
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  delete process.env.JWT_SECRET;
+  process.env.REFRESH_SECRET = 'valid-refresh-secret';
+  process.env.NODE_ENV = 'production';
+
+  let exitCode = null;
+  const originalExit = process.exit;
+  process.exit = (code) => {
+    exitCode = code;
+  };
+
+  delete require.cache[require.resolve('../middleware/auth')];
+
+  try {
+    require('../middleware/auth');
+    assert.equal(exitCode, 1, 'Should call process.exit(1) if JWT_SECRET is missing in production');
+  } finally {
+    process.exit = originalExit;
+    if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalJwtSecret;
+    if (originalRefreshSecret === undefined) delete process.env.REFRESH_SECRET;
+    else process.env.REFRESH_SECRET = originalRefreshSecret;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    delete require.cache[require.resolve('../middleware/auth')];
+  }
+});
+
+test('middleware exits process in production if REFRESH_SECRET is missing', () => {
+  const originalJwtSecret = process.env.JWT_SECRET;
+  const originalRefreshSecret = process.env.REFRESH_SECRET;
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  process.env.JWT_SECRET = 'valid-jwt-secret';
+  delete process.env.REFRESH_SECRET;
+  process.env.NODE_ENV = 'production';
+
+  let exitCode = null;
+  const originalExit = process.exit;
+  process.exit = (code) => {
+    exitCode = code;
+  };
+
+  delete require.cache[require.resolve('../middleware/auth')];
+
+  try {
+    require('../middleware/auth');
+    assert.equal(exitCode, 1, 'Should call process.exit(1) if REFRESH_SECRET is missing in production');
+  } finally {
+    process.exit = originalExit;
+    if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalJwtSecret;
+    if (originalRefreshSecret === undefined) delete process.env.REFRESH_SECRET;
+    else process.env.REFRESH_SECRET = originalRefreshSecret;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    delete require.cache[require.resolve('../middleware/auth')];
+  }
+});
