@@ -44,6 +44,7 @@ const [threadReplies, setThreadReplies] = useState([]);
   const [dmNotifs,      setDmNotifs]      = useState([]);
   const [sessionMsg, setSessionMsg] = useState(null);
   const [dmToast,       setDmToast]       = useState(null);
+  const dmToastTimeoutRef = useRef(null);
   const [allowUserChannelCreation, setAllowUserChannelCreation] = useState(false);
 
   const [socketInstance, setSocketInstance] = useState(null);
@@ -209,7 +210,12 @@ const [threadReplies, setThreadReplies] = useState([]);
     socket.on('dm:notification', notif => {
       setDmNotifs(prev => [...prev, notif]);
       setDmToast(notif);
-      setTimeout(() => setDmToast(null), 4000);
+      if (dmToastTimeoutRef.current) {
+        clearTimeout(dmToastTimeoutRef.current);
+      }
+      dmToastTimeoutRef.current = setTimeout(() => {
+        setDmToast(null);
+      }, 4000);
     });
 
     socket.on('kicked', ({ by }) => {
@@ -226,11 +232,14 @@ const [threadReplies, setThreadReplies] = useState([]);
 
     return () => {
       clearTimeout(timer);
-      socket.removeAllListeners();
-      setSocketInstance(null);
-      socketRef.current = null;
-    };
-  }, [token, currentUser, handleLogout]);
+    if (dmToastTimeoutRef.current) {
+      clearTimeout(dmToastTimeoutRef.current);
+    }
+    socket.removeAllListeners();
+    setSocketInstance(null);
+    socketRef.current = null;
+  };
+}, [token, currentUser, handleLogout]);
 
   // ── Auth ───────────────────────────────────────────────────────
   const handleLogin = (user, tok) => {
