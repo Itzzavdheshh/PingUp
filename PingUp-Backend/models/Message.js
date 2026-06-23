@@ -52,7 +52,7 @@ const messageSchema = new mongoose.Schema({
   reactions: [
     {
       emoji: { type: String },
-      users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+      users: [{ type: String }]
     }
   ],
   clientId: {
