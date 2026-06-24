@@ -198,6 +198,49 @@ async function broadcastUserList() {
     const users = await User.find({ _id: { $in: onlineUserIds } });
     io.emit('users:update', users.map(u => u.toSafeObject()));
 }
+// Evict sockets from a channel room if the channel just became private
+// and they are no longer authorized.
+async function evictUnauthorizedSockets(room) {
+    if (!room.isPrivate) return; // only act when it IS now private
+
+    const roomIdStr = room._id.toString();
+
+    // ✅ Fetch from BOTH join paths — some sockets join by _id, others by name
+    const [socketsByIdArr, socketsByNameArr] = await Promise.all([
+        io.in(roomIdStr).fetchSockets(),
+        io.in(room.name).fetchSockets(),
+    ]);
+
+    // Deduplicate — a socket may appear in both sets
+    const seen = new Set();
+    const allSockets = [];
+    for (const s of [...socketsByIdArr, ...socketsByNameArr]) {
+        if (!seen.has(s.id)) {
+            seen.add(s.id);
+            allSockets.push(s);
+        }
+    }
+
+    const allowedSet = new Set(room.allowedUsers.map(id => id.toString()));
+
+    for (const s of allSockets) {
+        const user = s.data?.user ?? s.user;
+        const isOwnerOrAdmin =
+            user?.role === ROLES.OWNER || user?.role === ROLES.ADMIN;
+        if (isOwnerOrAdmin) continue; // owners/admins always keep access
+
+        const isAllowed = allowedSet.has(user?.id?.toString());
+        if (!isAllowed) {
+            // ✅ Leave BOTH room identifiers so no messages leak through
+            s.leave(roomIdStr);
+            s.leave(room.name);
+            s.emit('channel:kicked', {
+                channelId: roomIdStr,
+                reason: 'This channel has been made private.',
+            });
+        }
+    }
+}
 
 async function broadcastStructure() {
     const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
@@ -815,6 +858,7 @@ async function processCommand(socket, roomName, text) {
             if (!room) return err(`#${args[0]} not found.`);
             room.isPrivate = !room.isPrivate;
             await room.save();
+            await evictUnauthorizedSockets(room);
             await broadcastStructure();
             ok(`#${room.name} is now ${room.isPrivate ? 'private 👁️' : 'public 🌐'}.`);
             break;
@@ -933,6 +977,8 @@ io.on('connection', async (socket) => {
     // Sync role from DB
     socket.user.role = dbUser.role;
 
+    socket.data.user = socket.user;
+    
     await redisClient.sAdd(`user:sockets:${socket.user.id}`, socket.id);
     await redisClient.sAdd('users:online', socket.user.id);
     await User.findByIdAndUpdate(socket.user.id, { online: true, socketId: socket.id });
@@ -1226,6 +1272,7 @@ io.on('connection', async (socket) => {
         if (!room) return;
         room.isPrivate = !room.isPrivate;
         await room.save();
+        await evictUnauthorizedSockets(room);
         await broadcastStructure();
         socket.emit('command:response', {
             type: 'success',

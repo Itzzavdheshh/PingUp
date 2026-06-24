@@ -222,6 +222,20 @@ const [threadReplies, setThreadReplies] = useState([]);
       alert(`You were kicked by ${by}.`);
       handleLogout();
     });
+    const activeChannelRef = useRef(activeChannel);
+    useEffect(() => {
+        activeChannelRef.current = activeChannel;
+    }, [activeChannel]);
+    socket.on('channel:kicked', ({ channelId, reason }) => {
+      if (activeChannelRef.current?.id === channelId) {
+        setActiveChannel(null);
+        setMessages([]);
+        setRoomSettings(null);
+        setNotifications([]);
+        setCommandResps([]);
+        alert(reason || 'This channel is now private.');
+      }
+    });
     socket.on('error:permission', msg =>
       setCommandResps(prev => [...prev, { type: 'error', text: `⛔ ${msg}` }])
     );
