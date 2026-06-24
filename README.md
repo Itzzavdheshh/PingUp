@@ -12,6 +12,23 @@
 
 ---
 
+## Table of Contents
+
+- [🔗 Repositories](#-repositories)
+- [💡 What is PingUp?](#-what-is-pingup)
+- [✨ Feature Overview](#-feature-overview)
+- [🏗️ Tech Stack](#%EF%B8%8F-tech-stack)
+- [🗂️ Project Structure](#%EF%B8%8F-project-structure)
+- [⚡ Setup & Installation](#-setup--installation)
+- [🔌 API Reference](#-api-reference)
+- [🔐 Security](#-security)
+- [🎨 Design System](#-design-system)
+- [👨‍💻 Built By](#%E2%80%8D-built-by)
+- [📄 License](#-license)
+- [Acknowledgements](#acknowledgements)
+
+---
+
 ## 🔗 Repositories
 
 | Part        | Repository                                                                                   |
