@@ -101,17 +101,19 @@ export default function MessageInput({
   const handleChange = useCallback((e) => {
     const newText = e.target.value;
     setText(newText);
-    
+
     if (!typingRef.current) {
       typingRef.current = true;
       onTypingStart();
     }
+
     clearTimeout(typingTimer.current);
+
     typingTimer.current = setTimeout(() => {
       typingRef.current = false;
       onTypingStop();
     }, 1500);
-  }, [onTypingStart, onTypingStop]);
+  }, [setText, onTypingStart, onTypingStop]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
