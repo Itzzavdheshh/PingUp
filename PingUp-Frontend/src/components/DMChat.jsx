@@ -7,21 +7,24 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
   const [isTyping, setIsTyping]       = useState(false);
   const bottomRef                     = useRef(null);
   const typingTimeout                 = useRef(null);
+  const otherUserId                   = otherUser?.id;
 
   // Load history + join DM room
   useEffect(() => {
-    if (!otherUser || !token) return;
+    if (!otherUserId || !token) return;
+    const conversationId = [currentUser.id, otherUserId].sort().join('_');
 
-    fetch(`https://pingup-backend-1.onrender.com/api/dm/${otherUser.id}`, {
+    fetch(`https://pingup-backend-1.onrender.com/api/dm/${otherUserId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(data => setMessages(Array.isArray(data) ? data : []))
       .catch(() => {});
 
-    socket.emit('dm:join', { otherUserId: otherUser.id });
+    socket.emit('dm:join', { otherUserId });
 
     const onMessage = (msg) => {
+      if (msg.conversationId !== conversationId) return;
       setMessages(prev => {
         if (prev.find(m => m.id === msg.id)) return prev;
         return [...prev, msg];
@@ -30,7 +33,8 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     const onTyping = ({ username, typing }) => {
       if (username !== currentUser.username) setIsTyping(typing);
     };
-    const onRead = () => {
+    const onRead = ({ conversationId: readConversationId }) => {
+      if (readConversationId !== conversationId) return;
       setMessages(prev => prev.map(m => ({ ...m, read: true })));
     };
 
@@ -42,8 +46,9 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       socket.off('dm:message', onMessage);
       socket.off('dm:typing',  onTyping);
       socket.off('dm:read',    onRead);
+      socket.emit('dm:leave', { otherUserId });
     };
-  }, [otherUser?.id]);
+  }, [currentUser.id, currentUser.username, otherUserId, socket, token]);
 
   // Auto scroll
   useEffect(() => {
