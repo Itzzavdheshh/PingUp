@@ -526,7 +526,6 @@ const filteredRooms = rooms.filter(room => {
 
 res.json(filteredRooms.map(r => roomToChannel(r)));
 });
-
 // Helper to escape regex special characters
 function escapeRegex(string) {
     return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
