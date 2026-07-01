@@ -1,6 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import '../styles/MessageInput.css';
 import { getApiUrl } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
 
 export default function MessageInput({
   onSend,
@@ -16,6 +20,8 @@ export default function MessageInput({
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [imageError, setImageError] = useState(null);
+
   
   const typingRef = useRef(false);
   const typingTimer = useRef(null);
@@ -61,7 +67,8 @@ export default function MessageInput({
           throw new Error('Upload failed');
         }
         imageUrl = data.imageUrl;
-      } catch {
+      } catch (err) {
+        console.error(err);
         alert('Image upload failed');
         setUploading(false);
         return;
@@ -96,7 +103,7 @@ export default function MessageInput({
       if (uploading || (!text.trim() && !imageFile) || isDisabled) return;
       handleSend();
     }
-  }, [text, isDisabled, imageFile, uploading, handleSend]);
+  }, [text, isDisabled, imageFile, uploading, token]);
 
   const handleChange = useCallback((e) => {
     const newText = e.target.value;
@@ -118,7 +125,14 @@ export default function MessageInput({
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    setImageError('Only JPEG, PNG, WebP, and GIF images are allowed.');
+    e.target.value = '';
+    return;
+  }
     if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageError(null);
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
   };
@@ -127,11 +141,16 @@ export default function MessageInput({
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(null);
     setImagePreview(null);
+    setImageError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <div className={`msg-input-wrap ${isDisabled ? 'msg-input-disabled' : ''}`}>
+     {imageError && (
+        <p className="image-error-text">{imageError}</p>
+      )}
+
       {imagePreview && (
         <div style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <img src={imagePreview} alt="preview" style={{ maxHeight: '80px', borderRadius: '8px' }} />
@@ -153,7 +172,7 @@ export default function MessageInput({
       
       <input
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/gif"
         ref={fileInputRef}
         onChange={handleImageChange}
         style={{ display: 'none' }}
