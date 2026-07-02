@@ -48,6 +48,7 @@ function setupHandlers(io, socket) {
                 parentMessageId: m.parentMessageId,
                 replyCount: m.replyCount || 0,
             })),
+            roomSettings: roomToChannel(room),
         });
         io.to(roomName).emit('room:notification', {
             text: `${socket.user.username} joined #${roomName}`, type: 'join',
