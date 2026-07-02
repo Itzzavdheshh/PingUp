@@ -23,29 +23,40 @@ export default function DMList({ currentUser, token, onlineUsers, onOpenDM, acti
     fetchConversations();
   }, [fetchConversations, dmNotifications]);
 
-  // Debounced search mechanism.
-  // Delaying API calls by 300ms mitigates query flooding on database when typing.
+  // Debounced search with AbortController to prevent stale responses.
+  // If searchQuery changes before a previous fetch resolves, the in-flight
+  // request is aborted so its .then() never overwrites newer results.
   useEffect(() => {
     if (!searchQuery.trim()) {
       return;
     }
 
+    // Declare controller in the outer effect scope so both the timeout
+    // callback and the single cleanup function can reference it.
+    const controller = new AbortController();
+
     const delayDebounceFn = setTimeout(() => {
       setIsSearching(true);
       fetch(getApiUrl(`/api/users/search?q=${encodeURIComponent(searchQuery)}`), {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       })
         .then(r => r.json())
         .then(data => {
           setSearchResults(Array.isArray(data) ? data : []);
           setIsSearching(false);
         })
-        .catch(() => {
-          setIsSearching(false);
+        .catch((err) => {
+          // Ignore abort errors — they are intentional cancellations, not failures.
+          if (err.name !== 'AbortError') setIsSearching(false);
         });
     }, 300);
 
-    return () => clearTimeout(delayDebounceFn);
+    // Single cleanup: cancel the pending timeout AND abort any in-flight request.
+    return () => {
+      clearTimeout(delayDebounceFn);
+      controller.abort();
+    };
   }, [searchQuery, token]);
 
   // Find online users to display (all online users except self)
