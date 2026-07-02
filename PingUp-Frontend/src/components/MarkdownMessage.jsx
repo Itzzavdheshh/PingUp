@@ -6,7 +6,7 @@ import rehypeSanitize from 'rehype-sanitize';
 export default function MarkdownMessage({ content, truncate }) {
   const customRenderers = {
     // Ensure all links open in a new tab securely
-    a: ({ node, ...props }) => <a target="_blank" rel="noopener noreferrer" {...props} />,
+    a: ({ _node, ...props }) => <a target="_blank" rel="noopener noreferrer" {...props} />,
   };
 
   return (
