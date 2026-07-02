@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import LogoutModal from './LogoutModal';
 import ProfileMenu from './ProfileMenu';
 import ChannelCategory from './ChannelCategory';
