@@ -103,7 +103,7 @@ export default function MessageInput({
       if (uploading || (!text.trim() && !imageFile) || isDisabled) return;
       handleSend();
     }
-  }, [text, isDisabled, imageFile, uploading, token, handleSend]);
+  }, [text, isDisabled, imageFile, uploading, handleSend]);
 
   const handleChange = useCallback((e) => {
     const newText = e.target.value;
