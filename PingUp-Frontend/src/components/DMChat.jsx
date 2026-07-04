@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, } from 'react';
 import { getApiUrl } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
 import MarkdownMessage from './MarkdownMessage';
+import SearchPanel from './SearchPanel';
 
 // Generate a temporary client-side ID for optimistic message rendering
 function generateClientId() {
@@ -27,6 +28,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
   const { text, setText, clearDraft } = useDraftMessage('dm', otherUser?.id);
   const [typing, setTyping]           = useState(false);
   const [isTyping, setIsTyping]       = useState(false);
+  const [showSearch, setShowSearch]   = useState(false);
   const bottomRef                     = useRef(null);
   const typingTimeout                 = useRef(null);
   const inputRef                      = useRef(null);
@@ -38,6 +40,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
 
   const otherUserId = otherUser?.id;
   const currentUsername = currentUser?.username;
+  const dmId = currentUser && otherUser ? [currentUser.id, otherUser.id].sort().join('_') : null;
 
   // Load history + join DM room
   useEffect(() => {
@@ -168,7 +171,16 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         <span className="dm-chat-online-label">
           {otherUser.online ? '🟢 Online' : '⚫ Offline'}
         </span>
-        <button className="dm-chat-close" onClick={onClose}>✕</button>
+        <div className="dm-chat-actions">
+          <button
+            className={`dm-chat-btn ${showSearch ? 'dm-chat-btn-active' : ''}`}
+            title="Search messages"
+            onClick={() => setShowSearch(!showSearch)}
+          >
+            🔍
+          </button>
+          <button className="dm-chat-close" onClick={onClose} title="Close DM">✕</button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -246,6 +258,14 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         />
         <button type="submit" disabled={!text.trim()}>➤</button>
       </form>
+
+      {showSearch && dmId && (
+        <SearchPanel
+          dmId={dmId}
+          token={token}
+          onClose={() => setShowSearch(false)}
+        />
+      )}
     </div>
   );
 }

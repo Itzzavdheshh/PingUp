@@ -13,6 +13,7 @@ import DMChat       from './components/DMChat';
 import DMList       from './components/DMList';
 import AdminPanel   from './components/AdminPanel';
 import VoiceChannel from './components/VoiceChannel';
+import SearchPanel  from './components/SearchPanel';
 import NotFound     from './pages/NotFound';
 
 // Channel names that render as the music/voice player instead of a text chat
@@ -55,6 +56,7 @@ const [threadReplies, setThreadReplies] = useState([]);
   const [dmToast,       setDmToast]       = useState(null);
   const dmToastTimeoutRef = useRef(null);
   const [allowUserChannelCreation, setAllowUserChannelCreation] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   const [socketInstance, setSocketInstance] = useState(null);
   const socketRef = useRef(null);
@@ -282,6 +284,7 @@ const [threadReplies, setThreadReplies] = useState([]);
     setActiveDM(null);
     setShowFriends(false);
     setShowAdmin(false);
+    setShowSearch(false);
     setTypingUsers([]);
     setMessages([]);
     // Voice channels don't need a text channel:join
@@ -446,6 +449,16 @@ const [threadReplies, setThreadReplies] = useState([]);
               )}
             </div>
 
+            <div className="chat-header-actions">
+              <button
+                className={`hdr-admin-btn ${showSearch ? 'hdr-btn-active' : ''}`}
+                title="Search messages"
+                onClick={() => setShowSearch(!showSearch)}
+              >
+                🔍
+              </button>
+            </div>
+
             {/* Owner quick-controls */}
             {isOwner && (
               <div className="chat-header-admin-btns">
@@ -517,6 +530,13 @@ const [threadReplies, setThreadReplies] = useState([]);
             channelId={activeChannel.id}
             token={token}
           />
+          {showSearch && (
+            <SearchPanel
+              channelId={activeChannel.id}
+              token={token}
+              onClose={() => setShowSearch(false)}
+            />
+          )}
         </>
       );
     }
