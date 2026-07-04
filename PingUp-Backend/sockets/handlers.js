@@ -550,6 +550,16 @@ function setupHandlers(io, socket) {
                 senderRole: socket.user.role, text, timestamp: msg.createdAt, read: false, clientId
             }
             io.to(`dm:${convId}`).emit('dm:message', payload);
+            
+            const otherSocket = [...io.sockets.sockets.values()].find(s => s.user?.id === toUserId);
+            if (otherSocket) {
+                otherSocket.emit('dm:notification', {
+                    fromId: socket.user.id,
+                    from: socket.user.username,
+                    preview: text
+                });
+            }
+
             if (typeof callback === 'function') callback({ status: 'success', id: msg._id.toString() });
         } catch (err) {
             if (typeof callback === 'function') callback({ error: 'Server error', status: 'failed' });

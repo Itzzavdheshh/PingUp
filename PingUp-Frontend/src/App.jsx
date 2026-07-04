@@ -59,10 +59,52 @@ const [threadReplies, setThreadReplies] = useState([]);
   const [socketInstance, setSocketInstance] = useState(null);
   const socketRef = useRef(null);
   const activeChannelRef = useRef(activeChannel);
+  const activeDMRef = useRef(activeDM);
+  const categoriesRef = useRef(categories);
 
   useEffect(() => {
     activeChannelRef.current = activeChannel;
   }, [activeChannel]);
+
+  useEffect(() => {
+    activeDMRef.current = activeDM;
+  }, [activeDM]);
+
+  useEffect(() => {
+    categoriesRef.current = categories;
+  }, [categories]);
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator && 'Notification' in window) {
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('Service Worker registered', reg);
+      }).catch(err => console.error('SW registration failed', err));
+
+      if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+      }
+
+      const handleSWMessage = (event) => {
+        if (event.data?.type === 'NAVIGATE') {
+          const payload = event.data.payload || {};
+          if (payload.type === 'channel' && payload.channelName) {
+            const ch = categoriesRef.current.flatMap(c => c.channels).find(c => c.name === payload.channelName);
+            if (ch) {
+              setActiveDM(null);
+              setShowFriends(false);
+              setActiveChannel(ch);
+            }
+          } else if (payload.type === 'dm' && payload.dmUserId) {
+            setActiveChannel(null);
+            setShowFriends(false);
+            setActiveDM({ id: payload.dmUserId, username: payload.dmUsername });
+          }
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+    }
+  }, []);
 
   const isVoiceChannel = activeChannel && VOICE_CHANNELS.includes(activeChannel.name);
   const isOwner        = currentUser?.role === 'owner';
@@ -142,9 +184,27 @@ const [threadReplies, setThreadReplies] = useState([]);
       setCommandResps(prev => [...prev, res])
     );
 
-    socket.on('message:new', (msg) => {
+    const triggerPushNotification = async (title, options) => {
+      if (Notification.permission === 'granted' && navigator.serviceWorker) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          reg.showNotification(title, options);
+        } catch (err) {
+          console.error('Push notification failed', err);
+        }
+      }
+    };
 
-  if (msg.parentMessageId) {
+    socket.on('message:new', (msg) => {
+      if (document.visibilityState !== 'visible' || activeChannelRef.current?.name !== msg.roomName) {
+        triggerPushNotification(`New message in #${msg.roomName}`, {
+          body: `${msg.username}: ${msg.text}`,
+          icon: '/favicon.svg',
+          data: { type: 'channel', channelName: msg.roomName }
+        });
+      }
+
+      if (msg.parentMessageId) {
     setThreadReplies(prev =>
       prev.find(m => m.id === msg.id)
         ? prev
@@ -222,6 +282,14 @@ const [threadReplies, setThreadReplies] = useState([]);
     );
 
     socket.on('dm:notification', notif => {
+      if (document.visibilityState !== 'visible' || activeDMRef.current?.id !== notif.fromId) {
+        triggerPushNotification(`New DM from ${notif.from}`, {
+          body: notif.preview,
+          icon: '/favicon.svg',
+          data: { type: 'dm', dmUserId: notif.fromId, dmUsername: notif.from }
+        });
+      }
+
       setDmNotifs(prev => [...prev, notif]);
       setDmToast(notif);
       if (dmToastTimeoutRef.current) {
