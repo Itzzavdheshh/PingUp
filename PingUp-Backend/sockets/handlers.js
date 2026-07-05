@@ -553,11 +553,19 @@ function setupHandlers(io, socket) {
             
             const otherSocket = [...io.sockets.sockets.values()].find(s => s.user?.id === toUserId);
             if (otherSocket) {
-                otherSocket.emit('dm:notification', {
-                    fromId: socket.user.id,
-                    from: socket.user.username,
-                    preview: text
-                });
+                const receiverViewingChat = otherSocket.currentDM === convId;
+                if (receiverViewingChat) {
+                    msg.read = true;
+                    await msg.save();
+                    payload.read = true;
+                    socket.emit('dm:read', { conversationId: convId });
+                } else {
+                    otherSocket.emit('dm:notification', {
+                        fromId: socket.user.id,
+                        from: socket.user.username,
+                        preview: text
+                    });
+                }
             }
 
             if (typeof callback === 'function') callback({ status: 'success', id: msg._id.toString() });

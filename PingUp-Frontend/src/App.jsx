@@ -80,9 +80,7 @@ const [threadReplies, setThreadReplies] = useState([]);
         console.log('Service Worker registered', reg);
       }).catch(err => console.error('SW registration failed', err));
 
-      if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-        Notification.requestPermission();
-      }
+
 
       const handleSWMessage = (event) => {
         if (event.data?.type === 'NAVIGATE') {
@@ -340,6 +338,10 @@ const [threadReplies, setThreadReplies] = useState([]);
     setSessionMsg(null); 
     localStorage.setItem('token', tok);
     localStorage.setItem('user',  JSON.stringify(user));
+    
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
   };
 
 
