@@ -143,6 +143,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     }, 1200);
   }
 
+  // eslint-disable-next-line no-unused-vars
   function handleEditReaction(msgId, emoji) {
     socket?.emit('message:edit:reaction', {
       messageId: msgId,
