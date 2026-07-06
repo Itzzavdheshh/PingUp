@@ -4,3 +4,8 @@ export function getApiUrl(endpoint) {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   return `${BASE_URL}${cleanEndpoint}`;
 }
+
+export function apiFetch(endpoint, options = {}) {
+  options.credentials = 'credentials' in options ? options.credentials : 'include';
+  return fetch(getApiUrl(endpoint), options);
+}

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import '../styles/MessageInput.css';
-import { getApiUrl } from '../api';
+import { getApiUrl, apiFetch } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
 
 const ALLOWED_FILE_TYPES = [
@@ -60,11 +60,9 @@ export default function MessageInput({
       const formData = new FormData();
       formData.append('image', imageFile);
       try {
-        const res = await fetch(getApiUrl('/api/upload'), {
+        const res = await apiFetch('/api/upload', {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: formData,
         });
         const data = await res.json();

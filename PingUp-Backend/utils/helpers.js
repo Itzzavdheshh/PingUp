@@ -125,15 +125,25 @@ function roomToChannel(r) {
 }
 
 function authHeader(req, res) {
-    const authHeaderVal = req.headers.authorization;
-    if (!authHeaderVal || !authHeaderVal.startsWith('Bearer ')) {
+    let token = null;
+    if (req.cookies && req.cookies.token) {
+        token = req.cookies.token;
+    } else {
+        const authHeaderVal = req.headers.authorization;
+        if (authHeaderVal && authHeaderVal.startsWith('Bearer ')) {
+            token = authHeaderVal.slice('Bearer '.length).trim();
+        }
+    }
+
+    if (!token) {
         res.status(401).json({ error: 'Unauthorized' });
         return null;
     }
-    const token = authHeaderVal.slice('Bearer '.length).trim();
-    if (!token) { res.status(401).json({ error: 'Unauthorized' }); return null; }
     const decoded = verifyToken(token);
-    if (!decoded) { res.status(401).json({ error: 'Invalid token' }); return null; }
+    if (!decoded) {
+        res.status(401).json({ error: 'Invalid token' });
+        return null;
+    }
     return decoded;
 }
 

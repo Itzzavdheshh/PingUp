@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const cookieParser = require('cookie-parser');
 
 const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
 const Room = require('./models/Room');
@@ -48,6 +49,7 @@ app.use(
     })
 );
 app.use(express.json());
+app.use(cookieParser());
 // Serve uploads without allowing browsers to interpret active content.
 app.use('/uploads', (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');

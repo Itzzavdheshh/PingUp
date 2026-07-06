@@ -15,6 +15,7 @@ import AdminPanel   from './components/AdminPanel';
 import VoiceChannel from './components/VoiceChannel';
 import SearchPanel  from './components/SearchPanel';
 import NotFound     from './pages/NotFound';
+import { apiFetch } from './api';
 
 // Channel names that render as the music/voice player instead of a text chat
 const VOICE_CHANNELS = ['music-lounge'];
@@ -32,7 +33,7 @@ export default function App() {
     const u = localStorage.getItem('user');
     return u ? JSON.parse(u) : null;
   });
-  const [token, setToken] = useState(() => localStorage.getItem('token') || '');
+  const [token, setToken] = useState('');
 
   // ── Server state ───────────────────────────────────────────────
   const [categories,    setCategories]    = useState([]);
@@ -71,7 +72,6 @@ const [threadReplies, setThreadReplies] = useState([]);
 
   const handleLogout = useCallback(() => {
     disconnectSocket();
-    localStorage.removeItem('token');
     localStorage.removeItem('user');
     setCurrentUser(null);
     setToken('');
@@ -88,7 +88,7 @@ const [threadReplies, setThreadReplies] = useState([]);
 
   // ── Socket setup ───────────────────────────────────────────────
   useEffect(() => {
-    if (!token || !currentUser) return;
+    if (!currentUser) return;
     const socket = getSocket(token);
     socketRef.current = socket;
     socket.connect();
@@ -297,11 +297,31 @@ const [threadReplies, setThreadReplies] = useState([]);
   // ── Auth ───────────────────────────────────────────────────────
   const handleLogin = (user, tok) => {
     setCurrentUser(user);
-    setToken(tok);
+    setToken(tok || '');
     setSessionMsg(null); 
-    localStorage.setItem('token', tok);
     localStorage.setItem('user',  JSON.stringify(user));
   };
+
+  // Verify auth cookie on startup
+  useEffect(() => {
+    if (currentUser) {
+      apiFetch('/api/auth/me')
+        .then(res => {
+          if (res.ok) {
+            return res.json();
+          } else if (res.status === 401) {
+            handleLogout();
+          }
+        })
+        .then(data => {
+          if (data && data.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem('user', JSON.stringify(data.user));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [handleLogout]);
 
 
   // ── Channel select ─────────────────────────────────────────────
@@ -655,6 +675,7 @@ const [threadReplies, setThreadReplies] = useState([]);
           onClose={() => setShowProfile(false)}
           onLogout={handleLogout}
           setCurrentUser={setCurrentUser}
+          token={token}
         />
       )}
 
