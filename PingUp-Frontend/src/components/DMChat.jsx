@@ -1,11 +1,34 @@
-import { useState, useEffect, useRef } from 'react';
-import { emitWithRetry, generateClientId } from '../socket';
+import { useState, useEffect, useRef, } from 'react';
+import { getApiUrl } from '../api';
+import { useDraftMessage } from '../hooks/useDraftMessage';
+import MarkdownMessage from './MarkdownMessage';
+import SearchPanel from './SearchPanel';
+
+// Generate a temporary client-side ID for optimistic message rendering
+function generateClientId() {
+  return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Emit a socket event and invoke callback with the server's acknowledgement.
+// Falls back to a "sent" response after a short delay if the server doesn't ack.
+function emitWithRetry(socket, event, data, callback) {
+  let settled = false;
+  const settle = (res) => {
+    if (settled) return;
+    settled = true;
+    callback?.(res);
+  };
+  socket.emit(event, data, (res) => settle(res || {}));
+  // If no ack within 5 s, treat as sent (server may not support acks)
+  setTimeout(() => settle({}), 5000);
+}
 
 export default function DMChat({ currentUser, otherUser, token, socket, onClose }) {
   const [messages, setMessages]       = useState([]);
-  const [text, setText]               = useState('');
+  const { text, setText, clearDraft } = useDraftMessage('dm', otherUser?.id);
   const [typing, setTyping]           = useState(false);
   const [isTyping, setIsTyping]       = useState(false);
+  const [showSearch, setShowSearch]   = useState(false);
   const bottomRef                     = useRef(null);
   const typingTimeout                 = useRef(null);
   const inputRef                      = useRef(null);
@@ -15,20 +38,31 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     inputRef.current?.focus();
   }, [otherUser?.id]);
 
+  const otherUserId = otherUser?.id;
+  const currentUserId = currentUser?.id;
+  const currentUsername = currentUser?.username;
+  const dmId = currentUser && otherUser ? [currentUser.id, otherUser.id].sort().join('_') : null;
+
   // Load history + join DM room
   useEffect(() => {
-    if (!otherUser || !token) return;
+    if (!currentUserId || !otherUserId || !token) return;
+    const conversationId = [currentUserId, otherUserId].sort().join('_');
+    const controller = new AbortController();
 
-    fetch(`https://pingup-backend-1.onrender.com/api/dm/${otherUser.id}`, {
+    fetch(getApiUrl(`/api/dm/${otherUserId}`), {
       headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
     })
       .then(r => r.json())
       .then(data => setMessages(Array.isArray(data) ? data : []))
-      .catch(() => { });
+      .catch(err => {
+        if (err.name !== 'AbortError') console.error('Failed to load DM history:', err);
+      });
 
-    socket.emit('dm:join', { otherUserId: otherUser.id });
+    socket.emit('dm:join', { otherUserId });
 
     const onMessage = (msg) => {
+      if (msg.conversationId !== conversationId) return;
       setMessages(prev => {
         const existingMsg = prev.find(m => m.id === msg.id || (msg.clientId && m.id === msg.clientId));
         if (existingMsg) {
@@ -38,22 +72,31 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       });
     };
     const onTyping = ({ username, typing }) => {
-      if (username !== currentUser.username) setIsTyping(typing);
+      if (username !== currentUsername) setIsTyping(typing);
     };
-    const onRead = () => {
-      setMessages(prev => prev.map(m => ({ ...m, read: true })));
+    const onRead = ({ conversationId: readConversationId, readerId }) => {
+      if (readConversationId !== conversationId || !readerId) return;
+      setMessages(prev => prev.map(m =>
+        String(m.senderId) !== String(readerId) ? { ...m, read: true } : m
+      ));
     };
+
+    const onDisconnect = () => setIsTyping(false);
 
     socket.on('dm:message', onMessage);
     socket.on('dm:typing', onTyping);
     socket.on('dm:read', onRead);
+    socket.on('disconnect', onDisconnect);
 
     return () => {
+      controller.abort();
       socket.off('dm:message', onMessage);
       socket.off('dm:typing', onTyping);
       socket.off('dm:read', onRead);
+      socket.off('disconnect', onDisconnect);
+      socket.emit('dm:leave', { otherUserId });
     };
-  }, [otherUser?.id, currentUser?.username, socket, token]); // Added missing dependencies
+  }, [currentUserId, otherUserId, token, socket, currentUsername]);
 
   // Auto scroll
   useEffect(() => {
@@ -77,15 +120,15 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     };
 
     setMessages(prev => [...prev, optMsg]);
-    setText('');
+    clearDraft();
     
     // Maintain focus after sending (removed unnecessary setTimeout)
     inputRef.current?.focus();
 
-    emitWithRetry('dm:send', {
+    emitWithRetry(socket, 'dm:send', {
       toUserId: otherUser.id,
       text: trimmed,
-      clientId // <-- Send to backend for idempotency
+      clientId // ← Send to backend for idempotency
     }, (res) => {
       if (res.error) {
         setMessages(prev => prev.map(m =>
@@ -93,7 +136,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         ))
       } else {
         setMessages(prev => prev.map(m =>
-          m.id === clientId ? { ...m, id: res.id, status: 'sent' } : m
+          m.id === clientId ? { ...m, id: res.id || m.id, status: 'sent' } : m
         ));
       }
     });
@@ -113,6 +156,14 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       setTyping(false);
       socket.emit('dm:typing:stop', { toUserId: otherUser.id });
     }, 1200);
+  }
+
+  // eslint-disable-next-line no-unused-vars
+  function handleEditReaction(msgId, emoji) {
+    socket?.emit('message:edit:reaction', {
+      messageId: msgId,
+      emoji,
+    });
   }
 
   function formatTime(ts) {
@@ -140,7 +191,16 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         <span className="dm-chat-online-label">
           {otherUser.online ? '🟢 Online' : '⚫ Offline'}
         </span>
-        <button className="dm-chat-close" onClick={onClose}>✕</button>
+        <div className="dm-chat-actions">
+          <button
+            className={`dm-chat-btn ${showSearch ? 'dm-chat-btn-active' : ''}`}
+            title="Search messages"
+            onClick={() => setShowSearch(!showSearch)}
+          >
+            🔍
+          </button>
+          <button className="dm-chat-close" onClick={onClose} title="Close DM">✕</button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -170,7 +230,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
                   </span>
                 )}
                 <div className={`dm-msg-bubble ${isMe ? 'bubble-mine' : 'bubble-theirs'}`}>
-                  {msg.text}
+                  <MarkdownMessage content={msg.text} />
                 </div>
                 <div className="dm-msg-meta">
                   <span className="dm-msg-time">{formatTime(msg.timestamp)}</span>
@@ -214,10 +274,18 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
           ref={inputRef}
           value={text}
           onChange={handleChange}
-          placeholder={`Message ${otherUser.username}…`}
+          placeholder={`Message ${otherUser.username} (Markdown supported)...`}
         />
         <button type="submit" disabled={!text.trim()}>➤</button>
       </form>
+
+      {showSearch && dmId && (
+        <SearchPanel
+          dmId={dmId}
+          token={token}
+          onClose={() => setShowSearch(false)}
+        />
+      )}
     </div>
   );
 }

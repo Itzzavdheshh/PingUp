@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getSocket, disconnectSocket } from './socket';
 import Login        from './components/Login';
 import Register     from './components/Register';
@@ -12,12 +13,21 @@ import DMChat       from './components/DMChat';
 import DMList       from './components/DMList';
 import AdminPanel   from './components/AdminPanel';
 import VoiceChannel from './components/VoiceChannel';
+import SearchPanel  from './components/SearchPanel';
+import NotFound     from './pages/NotFound';
 
 // Channel names that render as the music/voice player instead of a text chat
 const VOICE_CHANNELS = ['music-lounge'];
 
 export default function App() {
-  const [authPage,     setAuthPage]     = useState('login');
+  const location = useLocation();
+  const validPaths = ['/', '/index.html', '/login', '/register'];
+  const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
+  const isNotFound = !validPaths.includes(normalizedPath);
+
+  const [authPage,     setAuthPage]     = useState(() => {
+    return normalizedPath === '/register' ? 'register' : 'login';
+  });
   const [currentUser,  setCurrentUser]  = useState(() => {
     const u = localStorage.getItem('user');
     return u ? JSON.parse(u) : null;
@@ -44,9 +54,17 @@ const [threadReplies, setThreadReplies] = useState([]);
   const [dmNotifs,      setDmNotifs]      = useState([]);
   const [sessionMsg, setSessionMsg] = useState(null);
   const [dmToast,       setDmToast]       = useState(null);
+  const dmToastTimeoutRef = useRef(null);
   const [allowUserChannelCreation, setAllowUserChannelCreation] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
+  const [socketInstance, setSocketInstance] = useState(null);
   const socketRef = useRef(null);
+  const activeChannelRef = useRef(activeChannel);
+
+  useEffect(() => {
+    activeChannelRef.current = activeChannel;
+  }, [activeChannel]);
 
   const isVoiceChannel = activeChannel && VOICE_CHANNELS.includes(activeChannel.name);
   const isOwner        = currentUser?.role === 'owner';
@@ -75,9 +93,9 @@ const [threadReplies, setThreadReplies] = useState([]);
     socketRef.current = socket;
     socket.connect();
 
-    socket.on('connect', () => {
-        socket.emit('settings:get');
-    });
+    const timer = setTimeout(() => {
+      setSocketInstance(socket);
+    }, 0);
 
     socket.on('users:update', setOnlineUsers);
     socket.on('structure:update', setCategories);
@@ -170,24 +188,51 @@ const [threadReplies, setThreadReplies] = useState([]);
         prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
       );
     });
-    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) => {
+    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory, username }) => {
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
       );
       setThreadReplies(prev =>
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
       );
+      if (username && username !== currentUser.username) {
+        setNotifications(prev => [...prev, `✏️ @${username} edited their message`]);
+      }
     });
 
     socket.on('message:reaction:update', ({ messageId, reactions }) => {
-  setMessages(prev =>
-    prev.map(m =>
-      String(m.id) === String(messageId)
-        ? { ...m, reactions }
-        : m
-    )
-  );
-});
+      setMessages(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, reactions }
+            : m
+        )
+      );
+      setThreadReplies(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, reactions }
+            : m
+        )
+      );
+    });
+
+    socket.on('message:edit:reaction:update', ({ messageId, editReactions }) => {
+      setMessages(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, editReactions }
+            : m
+        )
+      );
+      setThreadReplies(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, editReactions }
+            : m
+        )
+      );
+    });
 
     socket.on('message:pinned', ({ id, pinnedBy }) => {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, pinned: true } : m));
@@ -208,12 +253,27 @@ const [threadReplies, setThreadReplies] = useState([]);
     socket.on('dm:notification', notif => {
       setDmNotifs(prev => [...prev, notif]);
       setDmToast(notif);
-      setTimeout(() => setDmToast(null), 4000);
+      if (dmToastTimeoutRef.current) {
+        clearTimeout(dmToastTimeoutRef.current);
+      }
+      dmToastTimeoutRef.current = setTimeout(() => {
+        setDmToast(null);
+      }, 4000);
     });
 
     socket.on('kicked', ({ by }) => {
       alert(`You were kicked by ${by}.`);
       handleLogout();
+    });
+    socket.on('channel:kicked', ({ channelId, reason }) => {
+      if (activeChannelRef.current?.id === channelId) {
+        setActiveChannel(null);
+        setMessages([]);
+        setRoomSettings(null);
+        setNotifications([]);
+        setCommandResps([]);
+        alert(reason || 'This channel is now private.');
+      }
     });
     socket.on('error:permission', msg =>
       setCommandResps(prev => [...prev, { type: 'error', text: `⛔ ${msg}` }])
@@ -223,23 +283,16 @@ const [threadReplies, setThreadReplies] = useState([]);
     );
     socket.on('error:general', msg => console.error('[socket]', msg));
 
-    socket.on('connect_error', (err) => {
-      if (['INVALID_TOKEN', 'AUTH_REQUIRED', 'USER_NOT_FOUND'].includes(err.message)) {
-        console.error('[socket] Auth error:', err.message);
-        setSessionMsg('Your session has expired. Please log in again.');
-        handleLogout();
-      }
-    });
-
-    socket.on('disconnect', (reason) => {
-      if (reason === 'io server disconnect') {
-        console.error('[socket] Server disconnected this client:', reason);
-        setSessionMsg('You were disconnected by the server. Please log in again.');
-        handleLogout();
-      }
-    });
-    return () => socket.removeAllListeners();
-  }, [token, currentUser,  handleLogout]);
+    return () => {
+      clearTimeout(timer);
+    if (dmToastTimeoutRef.current) {
+      clearTimeout(dmToastTimeoutRef.current);
+    }
+    socket.removeAllListeners();
+    setSocketInstance(null);
+    socketRef.current = null;
+  };
+}, [token, currentUser, handleLogout]);
 
   // ── Auth ───────────────────────────────────────────────────────
   const handleLogin = (user, tok) => {
@@ -258,6 +311,7 @@ const [threadReplies, setThreadReplies] = useState([]);
     setActiveDM(null);
     setShowFriends(false);
     setShowAdmin(false);
+    setShowSearch(false);
     setTypingUsers([]);
     setMessages([]);
     // Voice channels don't need a text channel:join
@@ -314,6 +368,11 @@ const [threadReplies, setThreadReplies] = useState([]);
     setDmNotifs(prev => prev.filter(n => n.fromId !== user.id));
   }
 
+  // ── 404 Not Found fallback ─────────────────────────────────────
+  if (isNotFound) {
+    return <NotFound />;
+  }
+
   // ── Not logged in ──────────────────────────────────────────────
   if (!currentUser) {
   return (
@@ -346,7 +405,7 @@ const [threadReplies, setThreadReplies] = useState([]);
         <div className="chat-admin-embed">
           <AdminPanel
             currentUser={currentUser}
-            socket={socketRef.current}
+            socket={socketInstance}
             categories={categories}
             onlineUsers={onlineUsers}
             token={token}
@@ -368,7 +427,7 @@ const [threadReplies, setThreadReplies] = useState([]);
             online: !!onlineUsers.find(u => u.id === activeDM.id),
           }}
           token={token}
-          socket={socketRef.current}
+          socket={socketInstance}
           onClose={() => setActiveDM(null)}
         />
       );
@@ -385,7 +444,7 @@ const [threadReplies, setThreadReplies] = useState([]);
         <VoiceChannel
           channel={activeChannel}
           currentUser={currentUser}
-          socket={socketRef.current}
+          socket={socketInstance}
           onlineUsers={onlineUsers}
           onLeave={() => setActiveChannel(null)}
         />
@@ -417,6 +476,16 @@ const [threadReplies, setThreadReplies] = useState([]);
               )}
             </div>
 
+            <div className="chat-header-actions">
+              <button
+                className={`hdr-admin-btn ${showSearch ? 'hdr-btn-active' : ''}`}
+                title="Search messages"
+                onClick={() => setShowSearch(!showSearch)}
+              >
+                🔍
+              </button>
+            </div>
+
             {/* Owner quick-controls */}
             {isOwner && (
               <div className="chat-header-admin-btns">
@@ -435,6 +504,22 @@ const [threadReplies, setThreadReplies] = useState([]);
                   title="Toggle private"
                   onClick={() => socketRef.current?.emit('channel:togglePrivate', { channelId: activeChannel.id })}
                 >👁️</button>
+                <select
+  className="hdr-slowmode-select"
+  value={roomSettings?.slowModeSeconds || 0}
+  onChange={(e) =>
+    socketRef.current?.emit('channel:setSlowMode', {
+      channelId: activeChannel.id,
+      seconds: Number(e.target.value),
+    })
+  }
+>
+  <option value={0}>Off</option>
+  <option value={5}>5s</option>
+  <option value={10}>10s</option>
+  <option value={30}>30s</option>
+  <option value={60}>60s</option>
+</select>
                 <button
                   className="hdr-admin-btn hdr-btn-danger"
                   title="Delete channel"
@@ -454,13 +539,13 @@ const [threadReplies, setThreadReplies] = useState([]);
             commandResponses={commandResps}
             typingUsers={typingUsers}
             currentUser={currentUser}
-            socket={socketRef.current}
+            socket={socketInstance}
             channelId={activeChannel.id}
             roomName={activeChannel.name}
             roomSettings={roomSettings}
             selectedThread={selectedThread}
-threadReplies={threadReplies}
-onOpenThread={handleOpenThread}
+            threadReplies={threadReplies}
+            onOpenThread={handleOpenThread}
           />
           <MessageInput
             onSend={handleSend}
@@ -469,7 +554,16 @@ onOpenThread={handleOpenThread}
             roomName={activeChannel.name}
             roomSettings={roomSettings}
             currentUser={currentUser}
+            channelId={activeChannel.id}
+            token={token}
           />
+          {showSearch && (
+            <SearchPanel
+              channelId={activeChannel.id}
+              token={token}
+              onClose={() => setShowSearch(false)}
+            />
+          )}
         </>
       );
     }
@@ -504,7 +598,7 @@ onOpenThread={handleOpenThread}
         onlineUsers={onlineUsers}
         activeChannel={activeChannel}
         categories={categories}
-        socket={socketRef.current}
+        socket={socketInstance}
         onChannelSelect={handleChannelSelect}
         onLogout={handleLogout}
         onOpenProfile={() => setShowProfile(true)}
@@ -546,7 +640,7 @@ onOpenThread={handleOpenThread}
           currentUser={currentUser}
           onlineUsers={onlineUsers}
           token={token}
-          socket={socketRef.current}
+          socket={socketInstance}
           onUserClick={(user) => {
             if (user.id === currentUser.id) return;
             openDM(user);

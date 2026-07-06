@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState } from "react";
+import LogoutModal from './LogoutModal';
+import ProfileMenu from './ProfileMenu';
+import ChannelCategory from './ChannelCategory';
 
 const STATUS_COLORS = {
   online:  '#23a55a',
@@ -16,11 +19,8 @@ function StatusDot({ status }) {
   );
 }
 
-const CHANNEL_EMOJIS = ['💬','🌿','⚙️','📢','🎲','💡','📋','🔒','🌐','🎯','🧪','📌'];
-
 export default function DMSidebar({
   currentUser,
-  onlineUsers,
   activeRoom,
   activeChannel,
   rooms,
@@ -44,10 +44,10 @@ export default function DMSidebar({
   const [showNewChannel,  setShowNewChannel]  = useState(null);
   const [catName,         setCatName]         = useState('');
   const [chForm,          setChForm]          = useState({ name: '', description: '', emoji: '💬' });
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const isOwner = currentUser?.role === 'owner';
-  const isMod   = ['owner', 'moderator'].includes(currentUser?.role);
-  const canCreateChannel = isOwner || allowUserChannelCreation;
+  const canCreateChannel = isOwner || !!allowUserChannelCreation;
 
   // ── Derive display list ─────────────────────────────────────────
   const displayCategories = (() => {
@@ -115,15 +115,6 @@ export default function DMSidebar({
   }
 
   // ── Channel status badge ────────────────────────────────────────
-  function ChannelStatusBadges({ ch }) {
-    return (
-      <div className="dm-ch-status-badges">
-        {ch.isReadOnly && <span className="dm-ch-badge dm-ch-badge-ro" title="Read-only">🔇</span>}
-        {ch.isLocked   && <span className="dm-ch-badge dm-ch-badge-lk" title="Locked">🔒</span>}
-        {ch.isPrivate  && <span className="dm-ch-badge dm-ch-badge-pv" title="Private">👁️</span>}
-      </div>
-    );
-  }
 
   return (
     <div className="dm-sidebar">
@@ -174,125 +165,26 @@ export default function DMSidebar({
       <div className="dm-channels-scroll">
 
         {displayCategories.map(cat => (
-          <div key={cat.id} className="dm-category-group">
-
-            {/* Category header */}
-            <div
-              className="dm-category-header"
-              onClick={() => toggleCollapse(cat.id)}
-            >
-              <span className="dm-cat-arrow">{collapsed[cat.id] ? '▶' : '▼'}</span>
-              <span className="dm-cat-label">{cat.name}</span>
-
-              {canCreateChannel && (
-                <div className="dm-cat-owner-btns">
-                  <button
-                    className="dm-cat-icon-btn"
-                    title="Add channel"
-                    onClick={e => {
-                      e.stopPropagation();
-                      setShowNewChannel(showNewChannel === cat.id ? null : cat.id);
-                    }}
-                  >＋</button>
-                  <button
-                    className="dm-cat-icon-btn dm-cat-icon-btn-danger"
-                    title="Delete category"
-                    onClick={e => handleDeleteCategory(e, cat.id)}
-                  >✕</button>
-                </div>
-              )}
-            </div>
-
-            {/* New channel form */}
-            {canCreateChannel && showNewChannel === cat.id && (
-              <form
-                className="dm-new-channel-form"
-                onSubmit={e => handleCreateChannel(e, cat.id)}
-              >
-                <div className="dm-emoji-picker">
-                  {CHANNEL_EMOJIS.map(em => (
-                    <button
-                      key={em} type="button"
-                      className={`dm-emoji-opt ${chForm.emoji === em ? 'selected' : ''}`}
-                      onClick={() => setChForm(f => ({ ...f, emoji: em }))}
-                    >{em}</button>
-                  ))}
-                </div>
-                <input
-                  placeholder="channel-name"
-                  value={chForm.name}
-                  onChange={e => setChForm(f => ({ ...f, name: e.target.value }))}
-                  autoFocus
-                />
-                <input
-                  placeholder="Description (optional)"
-                  value={chForm.description}
-                  onChange={e => setChForm(f => ({ ...f, description: e.target.value }))}
-                />
-                <div className="dm-new-ch-row">
-                  <button type="submit" className="dm-new-ch-create">Create</button>
-                  <button
-                    type="button"
-                    className="dm-new-ch-cancel"
-                    onClick={() => setShowNewChannel(null)}
-                  >Cancel</button>
-                </div>
-              </form>
-            )}
-
-            {/* Channel list */}
-            {!collapsed[cat.id] && cat.channels.map(ch => (
-              <div
-                key={ch.id}
-                className={`dm-channel-row ${isChannelActive(ch) ? 'active' : ''} ${ch.isLocked ? 'ch-locked' : ''} ${ch.isReadOnly ? 'ch-readonly' : ''}`}
-                onClick={() => handleChannelClick(ch)}
-                onMouseEnter={() => setHoveredChannel(ch.id)}
-                onMouseLeave={() => setHoveredChannel(null)}
-              >
-                <span className="dm-ch-hash">#</span>
-                <span className="dm-ch-emoji">{ch.emoji || '💬'}</span>
-                <span className="dm-ch-name">{ch.name}</span>
-
-                {/* Status badges — always visible on locked/readonly/private */}
-                <ChannelStatusBadges ch={ch} />
-
-                {/* Owner quick-actions on hover */}
-                {isOwner && hoveredChannel === ch.id && (
-                  <div className="dm-ch-hover-actions">
-                    <button
-                      className={`dm-ch-quick-btn ${ch.isReadOnly ? 'active' : ''}`}
-                      title="Toggle read-only"
-                      onClick={e => {
-                        e.stopPropagation();
-                        socket?.emit('channel:toggleReadOnly', { channelId: ch.id });
-                      }}
-                    >🔇</button>
-                    <button
-                      className={`dm-ch-quick-btn ${ch.isLocked ? 'active' : ''}`}
-                      title="Toggle lock"
-                      onClick={e => {
-                        e.stopPropagation();
-                        socket?.emit('channel:toggleLock', { channelId: ch.id });
-                      }}
-                    >🔒</button>
-                    <button
-                      className={`dm-ch-quick-btn ${ch.isPrivate ? 'active' : ''}`}
-                      title="Toggle private"
-                      onClick={e => {
-                        e.stopPropagation();
-                        socket?.emit('channel:togglePrivate', { channelId: ch.id });
-                      }}
-                    >👁️</button>
-                    <button
-                      className="dm-ch-del-btn"
-                      title="Delete channel"
-                      onClick={e => handleDeleteChannel(e, ch.id)}
-                    >🗑️</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <ChannelCategory
+            key={cat.id}
+            cat={cat}
+            collapsed={collapsed}
+            toggleCollapse={toggleCollapse}
+            canCreateChannel={canCreateChannel}
+            showNewChannel={showNewChannel}
+            setShowNewChannel={setShowNewChannel}
+            handleDeleteCategory={handleDeleteCategory}
+            chForm={chForm}
+            setChForm={setChForm}
+            handleCreateChannel={handleCreateChannel}
+            isChannelActive={isChannelActive}
+            handleChannelClick={handleChannelClick}
+            hoveredChannel={hoveredChannel}
+            setHoveredChannel={setHoveredChannel}
+            isOwner={isOwner}
+            socket={socket}
+            handleDeleteChannel={handleDeleteChannel}
+          />
         ))}
 
         {/* New Category — owner only */}
@@ -364,67 +256,27 @@ export default function DMSidebar({
           >⚙️</button>
         </div>
 
-        {/* ── Profile Pop-up Menu ── */}
-        {showProfileMenu && (
-          <div className="dm-profile-menu">
-            <div className="dm-profile-menu-header">
-              <div className={`dm-pm-avatar avatar-${currentUser.role}`}>
-                {currentUser.username[0].toUpperCase()}
-              </div>
-              <div>
-                <div className="dm-pm-name">{currentUser.username}</div>
-                <div className={`dm-pm-role role-${currentUser.role}`}>{currentUser.role}</div>
-                <div className="dm-pm-status">🟢 Online</div>
-              </div>
-            </div>
+        <ProfileMenu
+          showProfileMenu={showProfileMenu}
+          currentUser={currentUser}
+          onOpenProfile={onOpenProfile}
+          setShowProfileMenu={setShowProfileMenu}
+          muted={muted}
+          setMuted={setMuted}
+          deafened={deafened}
+          setDeafened={setDeafened}
+          isOwner={isOwner}
+          onOpenAdmin={onOpenAdmin}
+          setShowNewCategory={setShowNewCategory}
+          setShowLogoutModal={setShowLogoutModal}
+        />
 
-            <div className="dm-pm-divider" />
-
-            <button
-              className="dm-pm-item"
-              onClick={() => { onOpenProfile(); setShowProfileMenu(false); }}
-            >👤 View Profile</button>
-            <button
-              className="dm-pm-item"
-              onClick={() => setMuted(v => !v)}
-            >{muted ? '🎙️ Unmute' : '🔇 Mute Microphone'}</button>
-            <button
-              className="dm-pm-item"
-              onClick={() => setDeafened(v => !v)}
-            >{deafened ? '🎧 Undeafen' : '🔕 Deafen'}</button>
-
-            {/* Owner-only section */}
-            {isOwner && (
-              <>
-                <div className="dm-pm-divider" />
-                <div className="dm-pm-section-label">👑 Owner Controls</div>
-
-                <button
-                  className="dm-pm-item"
-                  onClick={() => {
-                    onOpenAdmin?.();
-                    setShowProfileMenu(false);
-                  }}
-                >🛡️ Admin Panel</button>
-
-                <button
-                  className="dm-pm-item"
-                  onClick={() => {
-                    setShowNewCategory(true);
-                    setShowProfileMenu(false);
-                  }}
-                >📁 New Category</button>
-              </>
-            )}
-
-            <div className="dm-pm-divider" />
-
-            <button
-              className="dm-pm-item danger"
-              onClick={() => { setShowProfileMenu(false); onLogout(); }}
-            >🚪 Log Out</button>
-          </div>
-        )}
+        <LogoutModal
+          showLogoutModal={showLogoutModal}
+          setShowLogoutModal={setShowLogoutModal}
+          setShowProfileMenu={setShowProfileMenu}
+          onLogout={onLogout}
+        />
       </div>
     </div>
   );

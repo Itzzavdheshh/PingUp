@@ -1,13 +1,32 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import '../styles/MessageInput.css';
+import { getApiUrl } from '../api';
+import { useDraftMessage } from '../hooks/useDraftMessage';
+
+const ALLOWED_FILE_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
+
 
 export default function MessageInput({
-  onSend, onTypingStart, onTypingStop,
-  roomName, roomSettings, currentUser,
+  onSend,
+  onTypingStart,
+  onTypingStop,
+  roomName,
+  roomSettings,
+  currentUser,
+  channelId,
+  token,
 }) {
-  const [text, setText] = useState('');
+  const { text, setText, clearDraft } = useDraftMessage('channel', channelId);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [imageError, setImageError] = useState(null);
+
   
   const typingRef = useRef(false);
   const typingTimer = useRef(null);
@@ -22,7 +41,7 @@ export default function MessageInput({
   const getPlaceholder = () => {
     if (isLocked)   return '🔒 This channel is locked';
     if (isReadOnly) return '🚫 This channel is read-only';
-    return `Message #${roomName}`;
+    return `Message #${roomName} (Markdown supported)`;
   };
 
   // Only focus if not disabled and not already focused (improves accessibility)
@@ -32,7 +51,7 @@ export default function MessageInput({
     }
   }, [roomName, isDisabled]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     let imageUrl = null;
     
     // Handle Image Upload First
@@ -41,13 +60,20 @@ export default function MessageInput({
       const formData = new FormData();
       formData.append('image', imageFile);
       try {
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const res = await fetch(getApiUrl('/api/upload'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
         const data = await res.json();
         if (!res.ok || !data?.imageUrl) {
           throw new Error('Upload failed');
         }
         imageUrl = data.imageUrl;
       } catch (err) {
+        console.error(err);
         alert('Image upload failed');
         setUploading(false);
         return;
@@ -60,8 +86,8 @@ export default function MessageInput({
     // Send the message
     onSend(text.trim(), imageUrl);
     
-    // Reset inputs and state
-    setText('');
+    // Clear draft and reset inputs
+    clearDraft();
     setImageFile(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -74,7 +100,7 @@ export default function MessageInput({
 
     // Restore focus after sending (auto-focus feature)
     setTimeout(() => inputRef.current?.focus(), 0);
-  };
+  }, [text, imageFile, onSend, onTypingStop, clearDraft, token]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -82,25 +108,36 @@ export default function MessageInput({
       if (uploading || (!text.trim() && !imageFile) || isDisabled) return;
       handleSend();
     }
-  }, [text, isDisabled, imageFile, uploading]);
+  }, [text, isDisabled, imageFile, uploading, handleSend]);
 
   const handleChange = useCallback((e) => {
-    setText(e.target.value);
+    const newText = e.target.value;
+    setText(newText);
+
     if (!typingRef.current) {
       typingRef.current = true;
       onTypingStart();
     }
+
     clearTimeout(typingTimer.current);
+
     typingTimer.current = setTimeout(() => {
       typingRef.current = false;
       onTypingStop();
     }, 1500);
-  }, [onTypingStart, onTypingStop]);
+  }, [setText, onTypingStart, onTypingStop]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      setImageError('Only images and documents (PDF, DOC, DOCX) are allowed.');
+      e.target.value = '';
+      return;
+    }
     if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageError(null);
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
   };
@@ -109,15 +146,29 @@ export default function MessageInput({
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(null);
     setImagePreview(null);
+    setImageError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <div className={`msg-input-wrap ${isDisabled ? 'msg-input-disabled' : ''}`}>
+     {imageError && (
+        <p className="image-error-text">{imageError}</p>
+      )}
+
       {imagePreview && (
         <div style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src={imagePreview} alt="preview" style={{ maxHeight: '80px', borderRadius: '8px' }} />
-          <button onClick={removeImage} style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: '16px' }}>✕</button>
+          {imageFile?.type?.startsWith('image/') ? (
+            <img src={imagePreview} alt="preview" style={{ maxHeight: '80px', borderRadius: '8px' }} />
+          ) : (
+            <div style={{ padding: '8px', background: '#f5f5f5', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', color: '#333' }}>
+              <span style={{ fontSize: '24px' }}>📄</span>
+              <span style={{ fontSize: '14px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {imageFile?.name}
+              </span>
+            </div>
+          )}
+          <button onClick={removeImage} style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: '16px', color: '#666' }}>✕</button>
         </div>
       )}
       
@@ -130,11 +181,12 @@ export default function MessageInput({
         onKeyDown={handleKeyDown}
         disabled={isDisabled}
         rows={1}
+        maxLength={2000}
       />
       
       <input
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ref={fileInputRef}
         onChange={handleImageChange}
         style={{ display: 'none' }}
@@ -145,10 +197,10 @@ export default function MessageInput({
         className="msg-toolbar-btn"
         onClick={() => fileInputRef.current?.click()}
         disabled={isDisabled}
-        title="Attach image"
-        style={{ fontSize: '18px', padding: '0 8px', background: 'none', border: 'none', cursor: 'pointer' }}
+        title="Upload File"
+        style={{ fontSize: '14px', padding: '0 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}
       >
-        📎
+        Upload File
       </button>
       
       <button
