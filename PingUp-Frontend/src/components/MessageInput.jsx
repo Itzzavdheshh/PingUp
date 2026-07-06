@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import '../styles/MessageInput.css';
-import { getApiUrl, apiFetch } from '../api';
+import { apiFetch } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
 
 const ALLOWED_FILE_TYPES = [

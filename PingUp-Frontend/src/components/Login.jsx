@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { apiFetch } from '../api';
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
-export default function Login({ onLogin, onSwitchToRegister }) {
+export default function Login({ onLogin, onSwitch }) {
   const [email, setEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');

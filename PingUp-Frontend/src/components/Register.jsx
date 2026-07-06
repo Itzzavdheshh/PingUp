@@ -1,19 +1,34 @@
 import { useState } from 'react';
-import { getApiUrl } from '../api';
+import { apiFetch } from '../api';
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
 const MONTHS = [
-export default function Register({ onLogin, onSwitchToLogin }) {
-  const [form, setForm] = useState({ username: '', password: '', email: '', displayName: '', dobMonth: '', dobDay: '', dobYear: '' });
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+const YEARS = Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i);
+
+export default function Register({ onLogin, onSwitch }) {
+  const [form, setForm] = useState({
+    email: '',
+    displayName: '',
+    username: '',
+    password: '',
+    dobMonth: '',
+    dobDay: '',
+    dobYear: '',
+    emailOptIn: true,
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [diceMsg, setDiceMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 100 }, (_, i) => currentYear - i);
+  function handleChange(e) {
+    const { name, value, type, checked } = e.target;
+    setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
