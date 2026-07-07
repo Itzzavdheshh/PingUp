@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getApiUrl } from '../api';
+import { apiFetch } from '../api';
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function Login({ onLogin, onSwitch }) {
@@ -14,7 +14,7 @@ export default function Login({ onLogin, onSwitch }) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch(getApiUrl('/api/login'), {
+      const res = await apiFetch('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: email.trim(), password }),
       });

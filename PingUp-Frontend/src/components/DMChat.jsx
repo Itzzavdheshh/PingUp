@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, } from 'react';
-import { getApiUrl } from '../api';
+import { apiFetch } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
 import MarkdownMessage from './MarkdownMessage';
 import SearchPanel from './SearchPanel';
@@ -45,12 +45,12 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
 
   // Load history + join DM room
   useEffect(() => {
-    if (!currentUserId || !otherUserId || !token) return;
+    if (!currentUserId || !otherUserId) return;
     const conversationId = [currentUserId, otherUserId].sort().join('_');
     const controller = new AbortController();
 
-    fetch(getApiUrl(`/api/dm/${otherUserId}`), {
-      headers: { Authorization: `Bearer ${token}` },
+    apiFetch(`/api/dm/${otherUserId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       signal: controller.signal,
     })
       .then(r => r.json())

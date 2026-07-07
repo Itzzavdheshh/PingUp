@@ -15,11 +15,15 @@ export function getSocket(token) {
   }
 
   if (!socket) {
-    socket = io(SOCKET_URL, {
-      auth: { token },
+    const options = {
       autoConnect: false,
+      withCredentials: true,
       transports: ['websocket', 'polling'],  // ← important for Render
-    });
+    };
+    if (token) {
+      options.auth = { token };
+    }
+    socket = io(SOCKET_URL, options);
 
     socket.on('connect', () => {
       const proc = [...queue];

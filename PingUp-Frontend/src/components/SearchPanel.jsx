@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getApiUrl } from '../api';
+import { apiFetch } from '../api';
 
 export default function SearchPanel({ channelId, dmId, token, onClose }) {
   const [query, setQuery] = useState('');
@@ -21,8 +21,8 @@ export default function SearchPanel({ channelId, dmId, token, onClose }) {
       if (channelId) endpoint += `&channelId=${channelId}`;
       if (dmId) endpoint += `&dmId=${dmId}`;
 
-      const res = await fetch(getApiUrl(endpoint), {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await apiFetch(endpoint, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
       if (!res.ok) {
