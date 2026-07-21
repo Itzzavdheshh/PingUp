@@ -13,7 +13,8 @@ const {
     getServerSetting, 
     broadcastSettings, 
     roomToChannel,
-    evictUnauthorizedSockets
+    evictUnauthorizedSockets,
+    sanitizeCategoryId,
 } = require('../utils/helpers');
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -178,11 +179,12 @@ function setupHandlers(io, socket) {
         if (!name?.trim()) return;
         const exists = await Room.findOne({ name: name.trim().toLowerCase() });
         if (exists) return socket.emit('error:general', 'Channel name already exists.');
+        const targetCategory = sanitizeCategoryId(categoryId);
         const room = await Room.create({
             name: name.trim().toLowerCase().replace(/\s+/g, '-'),
             description: description?.trim() || '',
             emoji: emoji || '💬',
-            category: categoryId,
+            category: targetCategory,
             createdBy: socket.user.username,
         });
         await broadcastStructure(io);
@@ -483,7 +485,18 @@ function setupHandlers(io, socket) {
 
     socket.on('category:delete', safeSocketHandler(socket, 'category:delete', async ({ categoryId }) => {
         if (socket.user.role !== 'owner') return socket.emit('error:permission', 'Owner only.');
-        await Room.deleteMany({ category: categoryId });
+
+        const targetCategory = sanitizeCategoryId(categoryId);
+        if (!targetCategory) return;
+
+        // Clean up messages associated with channels in this category to prevent orphaned documents
+        const targetRooms = await Room.find({ category: targetCategory }, 'name');
+        const roomNames = targetRooms.map(r => r.name);
+        if (roomNames.length > 0) {
+            await Message.deleteMany({ roomName: { $in: roomNames } });
+        }
+
+        await Room.deleteMany({ category: targetCategory });
         await broadcastStructure(io);
     }, 'Failed to delete category.'));
 

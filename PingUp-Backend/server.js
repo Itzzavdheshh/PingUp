@@ -10,8 +10,11 @@ const cookieParser = require('cookie-parser');
 const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
 const Room = require('./models/Room');
 const User = require('./models/User');
+const Message = require('./models/Message');
 const { ROLES } = require('./data/store');
 const { uploadDir } = require('./middleware/upload');
+const { socketAuthMiddleware } = require('./middleware/auth');
+const { sanitizeCategoryId } = require('./utils/helpers');
 
 const authRoutes = require('./routes/auth');
 const uploadRoutes = require('./routes/upload');
@@ -137,8 +140,7 @@ async function evictUnauthorizedSockets(room) {
     }
 }
 
-// Socket.IO
-initializeSockets(io);
+// Socket.IO is initialized above via initializeSockets(io) at line 69
 
 // ─── Seed Default Rooms ───────────────────────────────────────────
 async function seedRooms() {
@@ -1020,11 +1022,12 @@ replyCount: 0, imageUrl: imageUrl || null,
         if (!name?.trim()) return;
         const exists = await Room.findOne({ name: name.trim().toLowerCase() });
         if (exists) return socket.emit('error:general', 'Channel name already exists.');
+        const targetCategory = sanitizeCategoryId(categoryId);
         const room = await Room.create({
             name: name.trim().toLowerCase().replace(/\s+/g, '-'),
             description: description?.trim() || '',
             emoji: emoji || '💬',
-            category: categoryId,
+            category: targetCategory,
             createdBy: socket.user.username,
         });
         await broadcastStructure();
@@ -1385,7 +1388,18 @@ replyCount: 0, imageUrl: imageUrl || null,
     socket.on('category:delete', safeSocketHandler(socket, 'category:delete', async ({ categoryId }) => {
         if (socket.user.role !== 'owner')
             return socket.emit('error:permission', 'Owner only.');
-        await Room.deleteMany({ category: categoryId });
+
+        const targetCategory = sanitizeCategoryId(categoryId);
+        if (!targetCategory) return;
+
+        // Clean up messages associated with channels in this category to prevent orphaned documents
+        const targetRooms = await Room.find({ category: targetCategory }, 'name');
+        const roomNames = targetRooms.map(r => r.name);
+        if (roomNames.length > 0) {
+            await Message.deleteMany({ roomName: { $in: roomNames } });
+        }
+
+        await Room.deleteMany({ category: targetCategory });
         await broadcastStructure();
     }, 'Failed to delete category.'));
 
