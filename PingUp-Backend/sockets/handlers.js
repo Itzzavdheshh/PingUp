@@ -489,7 +489,7 @@ function setupHandlers(io, socket) {
         const targetCategory = sanitizeCategoryId(categoryId);
         if (!targetCategory) return;
 
-        // Clean up messages associated with channels in this category to prevent orphaned documents
+        // Clean up message associated with channels in this category to prevent orphaned documents
         const targetRooms = await Room.find({ category: targetCategory }, 'name');
         const roomNames = targetRooms.map(r => r.name);
         if (roomNames.length > 0) {

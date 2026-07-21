@@ -4,7 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
-// Mock Redis connection during unit testing
+// Mock Redis connection during unit testing 
 const originalLoad = Module._load;
 Module._load = (request, parent, isMain) => {
   if (request.endsWith('config/redis') || request.endsWith('config/redis.js')) {

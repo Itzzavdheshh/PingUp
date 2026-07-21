@@ -148,7 +148,7 @@ function authHeader(req, res) {
 }
 
 /**
- * Strips the synthetic "cat-" UI prefix from category identifiers.
+ * Strips the synthetic "cat-" UI prefix from category identifiers
  * 
  * Non-obvious decision: Frontend components (like AdminPanel, DMSidebar, CreateChannelForm) emit 
  * category IDs derived from broadcastStructure (e.g. `cat-engineering`). However, MongoDB Room

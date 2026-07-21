@@ -53,7 +53,7 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
-// Serve uploads without allowing browsers to interpret active content.
+// Serve uploads without allowing browser to interpret active content.
 app.use('/uploads', (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'");
